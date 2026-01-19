@@ -14,7 +14,7 @@
     { "source": "/api/(.*)", "destination": "/api/index.py" },
     { "source": "/download/(.*)", "destination": "/api/index.py" },
     { "source": "/assets/(.*)", "destination": "/web/dist/assets/$1" },
-    { "source": "/(.*\\.(js|css|png|jpg|jpeg|svg|ico|json|txt))", "destination": "/web/dist/$1" },
+    { "source": "/(.*\\.(?:js|css|png|jpg|jpeg|svg|ico|json|txt))", "destination": "/web/dist/$1" },
     { "source": "/(.*)", "destination": "/web/dist/index.html" }
   ]
 }
