@@ -1,5 +1,8 @@
 {
   "type": "module",
+  "scripts": {
+    "build": "cd web && npm install && npm run build"
+  },
   "dependencies": {
     "mongodb": "^7.0.0",
     "dotenv": "^16.4.5"
