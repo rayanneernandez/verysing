@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useLanguage } from '../contexts/LanguageContext';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_URL || '';
 import logoPng from '../assets/logo.png';
 import '../App.css';
 
@@ -169,7 +169,7 @@ function Pagamento() {
         email: email
       });
 
-      setContratoUrl(response.data.download_url);
+      setContratoUrl(`${API_URL}/download/${response.data.contrato_arquivo}`);
       setAlertType('success');
       setAlertMessage('Pagamento confirmado e contrato gerado com sucesso!');
       
