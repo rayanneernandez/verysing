@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "build": "npm install --prefix web && npm run build --prefix web"
+    "build": "cd web && npm install && npm run build"
   },
   "engines": {
     "node": "18.x"
