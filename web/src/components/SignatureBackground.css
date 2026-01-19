@@ -1,0 +1,85 @@
+.signature-background-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+}
+
+.signature-vignette {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, transparent 30%, #0a0a0c 90%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.signature-svg {
+  width: 100%;
+  height: 100%;
+  max-width: 1200px;
+  /* Aumentando o blur geral e o brilho */
+  filter: drop-shadow(0 0 20px rgba(59, 130, 246, 0.6)) blur(1px);
+  z-index: 0;
+}
+
+.signature-path {
+  fill: none;
+  stroke: url(#gradient);
+  /* Traço mais grosso para parecer luz */
+  stroke-width: 12;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 3500;
+  stroke-dashoffset: 3500;
+  animation: drawSignature 10s ease-in-out infinite;
+  /* Efeito de "fumaça" / embaçado no traço */
+  filter: blur(4px);
+  opacity: 0.8;
+}
+
+.signature-path-secondary {
+  fill: none;
+  stroke: rgba(96, 165, 250, 0.4);
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 3500;
+  stroke-dashoffset: 3500;
+  animation: drawSignature 10s ease-in-out infinite;
+  animation-delay: 0.5s;
+  /* Mais embaçado para o traço secundário */
+  filter: blur(8px);
+}
+
+@keyframes drawSignature {
+  0% {
+    stroke-dashoffset: 3500;
+    opacity: 0;
+  }
+  5% {
+    opacity: 1;
+  }
+  45% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  70% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}

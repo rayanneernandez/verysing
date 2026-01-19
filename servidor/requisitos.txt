@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+python-multipart
+aiofiles
+cryptography
+reportlab
+pypdf
+qrcode[pil]
+motor
+python-dotenv
+pydantic[email]
