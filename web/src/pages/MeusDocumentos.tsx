@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { useLanguage } from '../contexts/LanguageContext';
 import './MeusDocumentos.css';
+import axios from 'axios';
 
 interface Document {
   id: string;
@@ -28,35 +29,34 @@ interface AuditLog {
 
 export default function MeusDocumentos() {
   const { t } = useLanguage();
-  const [folders, setFolders] = useState<Folder[]>(() => {
-    const saved = localStorage.getItem('app_folders');
-    return saved ? JSON.parse(saved) : [
-      { id: '1', name: 'Contratos 2024' },
-      { id: '2', name: 'Recibos' },
-      { id: '3', name: 'Propostas' }
-    ];
-  });
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [activeFolderId, setActiveFolderId] = useState<string | null>(null); // null means "All"
-  
-  const [documents, setDocuments] = useState<Document[]>(() => {
-    const saved = localStorage.getItem('app_documents');
-    return saved ? JSON.parse(saved) : [
-      { id: '1', name: 'Contrato Social.pdf', date: '12/05/2024', size: '1.2 MB', type: 'pdf', folderId: '1', category: 'Jurídico' },
-      { id: '2', name: 'Recibo Maio.pdf', date: '30/05/2024', size: '0.5 MB', type: 'pdf', folderId: '2', category: 'Financeiro' },
-      { id: '3', name: 'Proposta Cliente X.docx', date: '01/06/2024', size: '2.4 MB', type: 'doc', folderId: '3', category: 'Vendas' },
-      { id: '4', name: 'Documento Geral.pdf', date: '15/04/2024', size: '1.0 MB', type: 'pdf', folderId: null, category: 'Geral' },
-    ];
-  });
+  const userEmail = localStorage.getItem('userEmail');
+  const API_URL = import.meta.env.VITE_API_URL || '';
 
-  // Persist folders and documents
+  const fetchDocuments = async () => {
+    if (!userEmail) return;
+    setIsLoading(true);
+    try {
+      const response = await axios.get(`${API_URL}/api/documentos?email=${userEmail}`);
+      const docs = response.data.map((d: any) => ({
+        ...d,
+        type: getFileType(d.name)
+      }));
+      setDocuments(docs);
+    } catch (error) {
+      console.error('Erro ao buscar documentos:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    localStorage.setItem('app_folders', JSON.stringify(folders));
-  }, [folders]);
-
-  useEffect(() => {
-    localStorage.setItem('app_documents', JSON.stringify(documents));
-  }, [documents]);
+    fetchDocuments();
+  }, [userEmail]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
@@ -92,14 +92,6 @@ export default function MeusDocumentos() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
-
   const getFileType = (fileName: string): 'pdf' | 'doc' | 'image' => {
     const ext = fileName.split('.').pop()?.toLowerCase();
     if (ext === 'pdf') return 'pdf';
@@ -112,20 +104,22 @@ export default function MeusDocumentos() {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      const newDoc: Document = {
-        id: Date.now().toString(),
-        name: file.name,
-        date: new Date().toLocaleDateString('pt-BR'),
-        size: formatFileSize(file.size),
-        type: getFileType(file.name),
-        folderId: activeFolderId,
-        category: 'Rascunho'
-      };
-      setDocuments([newDoc, ...documents]);
-      event.target.value = ''; // Reset input
+    if (file && userEmail) {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('email', userEmail);
+      formData.append('categoria', activeFolderId ? (folders.find(f => f.id === activeFolderId)?.name || 'Geral') : 'Geral');
+
+      try {
+        await axios.post(`${API_URL}/api/documentos/upload`, formData);
+        fetchDocuments();
+        event.target.value = ''; // Reset input
+      } catch (error) {
+        console.error('Erro no upload:', error);
+        alert('Erro ao enviar documento.');
+      }
     }
   };
 
@@ -157,24 +151,24 @@ export default function MeusDocumentos() {
       isOpen: true,
       title: t('documents.delete_title') || 'Excluir Documento',
       message: t('documents.delete_confirm') || 'Tem certeza que deseja excluir este documento?',
-      onConfirm: () => {
-        setDocuments(documents.filter(doc => doc.id !== id));
+      onConfirm: async () => {
+        try {
+          await axios.delete(`${API_URL}/api/documentos/${id}`);
+          setDocuments(documents.filter(doc => doc.id !== id));
+          setConfirmationModal(prev => ({ ...prev, isOpen: false }));
+        } catch (error) {
+          console.error('Erro ao deletar:', error);
+          alert('Erro ao excluir documento.');
+        }
       }
     });
   };
 
   const handleDownloadDocument = (doc: Document) => {
-    // Real download simulation
-    const content = `Conteúdo simulado do documento: ${doc.name}\n\nData: ${doc.date}\nTamanho: ${doc.size}\nCategoria: ${doc.category}`;
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = doc.name; // Simulates original filename
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+    // Se for contrato, usa o endpoint de download. Se for upload, precisamos de um endpoint para ver binário.
+    // Por enquanto, o backend salva binário em 'conteudo' para docs e 'conteudo_pdf' para contratos.
+    // Vamos usar a mesma rota de download adaptada ou abrir em nova aba se for PDF.
+    window.open(`${API_URL}/download/${doc.name}`, '_blank');
   };
 
   const handleDeleteFolder = (id: string) => {
@@ -210,13 +204,9 @@ export default function MeusDocumentos() {
 
   const handleDocumentClick = (doc: Document) => {
     setSelectedDocument(doc);
-    // Mock audit logs based on document
+    // Logs reais baseados nos dados do documento
     setAuditLogs([
-      { id: '1', action: 'created', actor: 'Você', timestamp: '12/05/2024 10:00', details: 'Documento criado' },
-      { id: '2', action: 'sent', actor: 'Você', timestamp: '12/05/2024 10:05', details: 'Enviado para assinatura' },
-      { id: '3', action: 'viewed', actor: 'João Silva', timestamp: '12/05/2024 14:30', details: 'Visualizou o e-mail' },
-      { id: '4', action: 'signed', actor: 'João Silva', timestamp: '13/05/2024 09:15', details: 'Assinou o documento' },
-      { id: '5', action: 'completed', actor: 'Sistema', timestamp: '13/05/2024 09:15', details: 'Processo finalizado' },
+      { id: '1', action: 'created', actor: 'Sistema', timestamp: doc.date, details: 'Documento registrado no sistema' }
     ]);
   };
 
@@ -327,7 +317,11 @@ export default function MeusDocumentos() {
           </div>
 
           <div className="documents-list">
-             {filteredDocs.length > 0 ? (
+             {isLoading ? (
+               <div className="loading-state" style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                 <p>Carregando documentos...</p>
+               </div>
+             ) : filteredDocs.length > 0 ? (
                <table className="docs-table">
                  <thead>
                    <tr>

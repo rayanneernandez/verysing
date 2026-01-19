@@ -168,6 +168,8 @@ function Login() {
     e.preventDefault();
     setAlertMessage(null);
 
+    const API_URL = import.meta.env.VITE_API_URL || '';
+
     if (!isLogin) {
       if (password !== confirmPassword) {
         setAlertType('error');
@@ -179,7 +181,7 @@ function Login() {
       const cpfLimpo = cpf.replace(/\D/g, '');
 
       try {
-        await axios.post('http://localhost:8000/usuarios', {
+        await axios.post(`${API_URL}/api/usuarios`, {
           nome: nomeCompleto,
           email,
           cpf: cpfLimpo,
@@ -234,17 +236,32 @@ function Login() {
     }
 
     if (isLogin) {
-      if (!localStorage.getItem('userName')) {
-        const nameFromEmail = email ? email.split('@')[0] : 'Usuário';
-        const formattedName = nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
-        localStorage.setItem('userName', formattedName);
-      }
-      if (email) {
-        localStorage.setItem('userEmail', email);
+      try {
+        const response = await axios.post(`${API_URL}/api/login`, {
+          email,
+          senha: password
+        });
+
+        const userData = response.data;
+        
+        localStorage.setItem('userName', userData.nome);
+        localStorage.setItem('userEmail', userData.email);
+        localStorage.setItem('userPlan', userData.plano);
+        localStorage.setItem('userId', userData.id);
+        
+        navigate('/app');
+      } catch (err: any) {
+        console.error('Erro no login:', err);
+        let mensagem = 'Erro ao fazer login. Verifique suas credenciais.';
+
+        if (err.response && err.response.data && err.response.data.detail) {
+           mensagem = err.response.data.detail;
+        }
+
+        setAlertType('error');
+        setAlertMessage(mensagem);
       }
     }
-
-    navigate('/app');
   };
 
   return (

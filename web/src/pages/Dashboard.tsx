@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { useLanguage } from '../contexts/LanguageContext';
 import './Dashboard.css';
+
+import axios from 'axios';
 
 function Dashboard() {
   const [searchParams] = useSearchParams();
@@ -17,6 +19,42 @@ function Dashboard() {
   const [userJob, setUserJob] = useState(localStorage.getItem('userJob') || 'Administrador');
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const [recentActivities, setRecentActivities] = useState<any[]>([]);
+
+  const API_URL = import.meta.env.VITE_API_URL || '';
+
+  useEffect(() => {
+    const fetchActivities = async () => {
+      if (!userEmail) return;
+      try {
+        const response = await axios.get(`${API_URL}/api/documentos?email=${userEmail}`);
+        // Ordenar por data (mais recente primeiro) e pegar os 5 primeiros
+        const docs = response.data
+          .sort((a: any, b: any) => {
+             // Converter DD/MM/YYYY para Date object para ordenação correta
+             const dateA = a.date.split('/').reverse().join('-');
+             const dateB = b.date.split('/').reverse().join('-');
+             return new Date(dateB).getTime() - new Date(dateA).getTime();
+          })
+          .slice(0, 5)
+          .map((doc: any, index: number) => ({
+            id: doc.id || index,
+            document: doc.name,
+            status: 'concluido', // Assumindo concluído para documentos existentes
+            date: doc.date,
+            time: '00:00', // Backend não retorna hora separada ainda
+            recipient: 'Você'
+          }));
+        setRecentActivities(docs);
+      } catch (error) {
+        console.error('Erro ao buscar atividades:', error);
+      }
+    };
+
+    if (activeTab === 'dashboard') {
+      fetchActivities();
+    }
+  }, [userEmail, activeTab]);
 
   const userPlan = localStorage.getItem('userPlan') || 'gratuito';
   const planLabel =
@@ -26,54 +64,32 @@ function Dashboard() {
       ? 'Plano Empresarial'
       : 'Plano Gratuito';
 
-  // Mock data for recent activities - simulation of DB data
-  const recentActivities = [
-    {
-      id: 1,
-      document: 'Contrato de Prestação de Serviços.pdf',
-      status: 'concluido',
-      date: '24/05/2024',
-      time: '14:30',
-      recipient: 'João Silva'
-    },
-    {
-      id: 2,
-      document: 'Acordo de Confidencialidade (NDA).pdf',
-      status: 'aguardando',
-      date: '23/05/2024',
-      time: '09:15',
-      recipient: 'Maria Oliveira'
-    },
-    {
-      id: 3,
-      document: 'Proposta Comercial #1234.pdf',
-      status: 'aguardando',
-      date: '22/05/2024',
-      time: '16:45',
-      recipient: 'Carlos Souza'
-    },
-    {
-      id: 4,
-      document: 'Termo de Adesão.pdf',
-      status: 'concluido',
-      date: '20/05/2024',
-      time: '11:20',
-      recipient: 'Ana Costa'
+  // Mock data replaced by real API call
+  
+  const handleSave = async () => {
+    const userId = localStorage.getItem('userId');
+    if (!userId) {
+       setSaveMessage('Erro: Usuário não identificado. Faça login novamente.');
+       return;
     }
-  ];
 
-  const handleSave = () => {
     setIsSaving(true);
     setSaveMessage('');
     
-    // Simulate network request
-    setTimeout(() => {
+    try {
+      await axios.put(`${API_URL}/api/usuarios/${userId}`, {
+        nome: userName,
+        email: userEmail,
+        telefone: userPhone,
+        cargo: userJob
+      });
+
+      // Update local storage
       localStorage.setItem('userName', userName);
       localStorage.setItem('userEmail', userEmail);
       localStorage.setItem('userPhone', userPhone);
       localStorage.setItem('userJob', userJob);
       
-      setIsSaving(false);
       setSaveMessage('Alterações salvas com sucesso!');
       
       // Dispatch event to notify other components (like the header)
@@ -81,7 +97,12 @@ function Dashboard() {
       
       // Clear message after 3 seconds
       setTimeout(() => setSaveMessage(''), 3000);
-    }, 800);
+    } catch (error) {
+      console.error('Erro ao atualizar perfil:', error);
+      setSaveMessage('Erro ao salvar alterações.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
 

@@ -4,11 +4,15 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { DashboardLayout } from '../components/DashboardLayout';
 import './Pages.css';
 
+import axios from 'axios';
+
 function EnviarDocumento() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useLanguage();
   const [file, setFile] = useState<File | null>(null);
+  const userEmail = localStorage.getItem('userEmail');
+  const API_URL = import.meta.env.VITE_API_URL || '';
 
   useEffect(() => {
     if (location.state?.file) {
@@ -46,7 +50,7 @@ function EnviarDocumento() {
     setRecipients(recipients.map(r => r.id === id ? { ...r, [field]: value } : r));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!file) {
@@ -54,30 +58,29 @@ function EnviarDocumento() {
       return;
     }
 
-    // Simulate sending email
-    // console.log({ file, recipients, selfSign, senderName, senderEmail, senderRole, subject, message, deadline, autoReminder });
-    
-    // Save document to "Meus Documentos" (localStorage simulation)
-    const newDoc = {
-      id: Date.now().toString(),
-      name: file.name,
-      date: new Date().toLocaleDateString('pt-BR'),
-      size: (file.size / (1024 * 1024)).toFixed(1) + ' MB',
-      type: file.name.split('.').pop()?.toLowerCase() === 'pdf' ? 'pdf' : 'doc',
-      folderId: null, // Uncategorized
-      category: 'Enviado'
-    };
+    if (!userEmail) {
+      alert('Usuário não identificado. Faça login novamente.');
+      return;
+    }
 
-    const savedDocs = localStorage.getItem('app_documents');
-    const docs = savedDocs ? JSON.parse(savedDocs) : [];
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('email', userEmail);
+    formData.append('categoria', 'Enviado');
     
-    // Check if we need to initialize default docs if empty and not previously saved (optional, but good for consistency if user starts here)
-    // For now, just append.
-    const updatedDocs = [newDoc, ...docs];
-    localStorage.setItem('app_documents', JSON.stringify(updatedDocs));
+    // Adicionar metadados do envio
+    formData.append('destinatarios', JSON.stringify(recipients));
+    formData.append('assunto', subject);
+    formData.append('mensagem', message);
 
-    alert('E-mail foi enviado com sucesso!');
-    navigate('/documentos');
+    try {
+      await axios.post(`${API_URL}/api/documentos/upload`, formData);
+      alert('Documento enviado com sucesso!');
+      navigate('/documentos');
+    } catch (error) {
+      console.error('Erro ao enviar:', error);
+      alert('Erro ao enviar documento. Tente novamente.');
+    }
   };
 
   return (

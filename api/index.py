@@ -44,6 +44,38 @@ class UsuarioCreate(BaseModel):
     senha: str
     tipoPlano: str = "gratuito"
 
+class UsuarioLogin(BaseModel):
+    email: EmailStr
+    senha: str
+
+class UsuarioUpdate(BaseModel):
+    nome: Optional[str] = None
+    email: Optional[EmailStr] = None
+    cpf: Optional[str] = None
+    telefone: Optional[str] = None
+    cargo: Optional[str] = None
+    senha: Optional[str] = None
+
+@app.post("/api/login")
+async def login(dados: UsuarioLogin):
+    usuario = await db.usuarios.find_one({"email": dados.email})
+    
+    if not usuario:
+        raise HTTPException(status_code=400, detail="E-mail ou senha incorretos.")
+    
+    senha_hash = hashlib.sha256(dados.senha.encode()).hexdigest()
+    
+    if usuario["senhaHash"] != senha_hash:
+        raise HTTPException(status_code=400, detail="E-mail ou senha incorretos.")
+    
+    return {
+        "id": str(usuario["_id"]),
+        "nome": usuario["nome"],
+        "email": usuario["email"],
+        "plano": usuario.get("tipoPlano", "gratuito"),
+        "mensagem": "Login realizado com sucesso!"
+    }
+
 @app.post("/api/usuarios")
 async def criar_usuario(usuario: UsuarioCreate):
     if await db.usuarios.find_one({"email": usuario.email}):
@@ -85,6 +117,30 @@ async def criar_usuario(usuario: UsuarioCreate):
         "plano": usuario.tipoPlano,
         "status": status_plano
     }
+
+@app.put("/api/usuarios/{user_id}")
+async def atualizar_usuario(user_id: str, dados: UsuarioUpdate):
+    try:
+        obj_id = ObjectId(user_id)
+    except:
+        raise HTTPException(status_code=400, detail="ID de usuário inválido")
+    
+    update_data = {k: v for k, v in dados.dict().items() if v is not None}
+    
+    if "senha" in update_data:
+         update_data["senhaHash"] = hashlib.sha256(update_data.pop("senha").encode()).hexdigest()
+         
+    if not update_data:
+        return {"mensagem": "Nada para atualizar"}
+        
+    update_data["atualizadoEm"] = datetime.datetime.utcnow()
+    
+    result = await db.usuarios.update_one({"_id": obj_id}, {"$set": update_data})
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+        
+    return {"mensagem": "Usuário atualizado com sucesso"}
 
 app.add_middleware(
     CORSMiddleware,
@@ -181,6 +237,106 @@ class ConfirmacaoPagamento(BaseModel):
     plano: str
     email: Optional[str] = None
 
+from bson import ObjectId
+
+# --- Gestão de Documentos ---
+
+@app.get("/api/documentos")
+async def listar_documentos(email: str):
+    # Busca documentos enviados pelo usuário
+    docs_cursor = db.documentos.find({"email_usuario": email})
+    docs = await docs_cursor.to_list(length=100)
+    
+    # Busca contratos gerados (pagamentos) vinculados ao email
+    contratos_cursor = db.contratos.find({"email": email})
+    contratos = await contratos_cursor.to_list(length=100)
+    
+    resultado = []
+    
+    # Formata Documentos Uploaded
+    for d in docs:
+        resultado.append({
+            "id": str(d["_id"]),
+            "name": d["nome_arquivo"],
+            "date": d["criado_em"].strftime("%d/%m/%Y") if isinstance(d.get("criado_em"), datetime.datetime) else "N/A",
+            "size": d.get("tamanho", "0 MB"),
+            "type": d.get("tipo", "doc"),
+            "category": d.get("categoria", "Geral"),
+            "folderId": d.get("pasta_id")
+        })
+        
+    # Formata Contratos Gerados
+    for c in contratos:
+        resultado.append({
+            "id": str(c["_id"]),
+            "name": c.get("nome_arquivo", "Contrato.pdf"),
+            "date": c["criado_em"].strftime("%d/%m/%Y") if isinstance(c.get("criado_em"), datetime.datetime) else "N/A",
+            "size": "PDF",
+            "type": "pdf",
+            "category": "Contrato",
+            "folderId": None
+        })
+        
+    return resultado
+
+@app.post("/api/documentos/upload")
+async def upload_documento(
+    file: UploadFile = File(...), 
+    email: str = Form(...), 
+    categoria: str = Form("Geral"),
+    destinatarios: Optional[str] = Form(None),
+    assunto: Optional[str] = Form(None),
+    mensagem: Optional[str] = Form(None)
+):
+    contents = await file.read()
+    size_mb = len(contents) / (1024 * 1024)
+    size_str = f"{size_mb:.1f} MB"
+    
+    doc = {
+        "nome_arquivo": file.filename,
+        "conteudo": contents,
+        "email_usuario": email,
+        "tamanho": size_str,
+        "tipo": file.filename.split('.')[-1].lower() if '.' in file.filename else 'unknown',
+        "categoria": categoria,
+        "destinatarios": destinatarios,
+        "assunto": assunto,
+        "mensagem": mensagem,
+        "criado_em": datetime.datetime.utcnow(),
+        "pasta_id": None
+    }
+    
+    result = await db.documentos.insert_one(doc)
+    
+    return {
+        "id": str(result.inserted_id), 
+        "mensagem": "Upload realizado com sucesso",
+        "name": doc["nome_arquivo"],
+        "date": doc["criado_em"].strftime("%d/%m/%Y"),
+        "size": size_str,
+        "type": doc["tipo"],
+        "category": categoria
+    }
+
+@app.delete("/api/documentos/{doc_id}")
+async def deletar_documento(doc_id: str):
+    try:
+        # Tenta deletar de documentos
+        res = await db.documentos.delete_one({"_id": ObjectId(doc_id)})
+        if res.deleted_count > 0:
+            return {"mensagem": "Documento removido"}
+            
+        # Tenta deletar de contratos
+        res = await db.contratos.delete_one({"_id": ObjectId(doc_id)})
+        if res.deleted_count > 0:
+            return {"mensagem": "Contrato removido"}
+            
+        raise HTTPException(status_code=404, detail="Documento não encontrado")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# --- Fim Gestão de Documentos ---
+
 @app.post("/api/pagamento/pix")
 async def criar_pagamento_pix(dados: DadosPagamento):
     txid = uuid.uuid4().hex[:20]
@@ -254,6 +410,7 @@ async def confirmar_pagamento_contrato(dados: ConfirmacaoPagamento):
         "txid": dados.txid,
         "nome": dados.nome,
         "cpf": dados.cpf,
+        "email": dados.email, # Salva o email para vincular ao usuário
         "nome_arquivo": nome_arquivo,
         "conteudo_pdf": pdf_bytes, # Salva o binário do PDF
         "criado_em": datetime.datetime.utcnow()
