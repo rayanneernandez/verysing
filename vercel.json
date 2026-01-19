@@ -1,9 +1,8 @@
 {
+  "framework": "vite",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.py" },
     { "source": "/download/(.*)", "destination": "/api/index.py" },
-    { "source": "/assets/(.*)", "destination": "/web/dist/assets/$1" },
-    { "source": "/(.*\\.(png|jpg|jpeg|svg|ico|json))", "destination": "/web/dist/$1" },
     { "source": "/(.*)", "destination": "/web/dist/index.html" }
   ]
 }
