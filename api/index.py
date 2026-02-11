@@ -59,6 +59,8 @@ class UsuarioUpdate(BaseModel):
 
 @app.post("/api/login")
 async def login(dados: UsuarioLogin):
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Erro interno: Banco de dados não configurado. Verifique SUPABASE_URL e SUPABASE_KEY.")
     try:
         response = supabase.table("usuarios").select("*").eq("email", dados.email).execute()
         usuario = response.data[0] if response.data else None
@@ -84,6 +86,8 @@ async def login(dados: UsuarioLogin):
 
 @app.post("/api/usuarios")
 async def criar_usuario(usuario: UsuarioCreate):
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Erro interno: Banco de dados não configurado. Verifique SUPABASE_URL e SUPABASE_KEY.")
     # Verifica duplicidade
     res_email = supabase.table("usuarios").select("id").eq("email", usuario.email).execute()
     if res_email.data:
