@@ -120,7 +120,7 @@ function Home() {
     }
 
     try {
-      const resposta = await axios.post('https://localhost:8000/assinar', formData, {
+      const resposta = await axios.post('/api/assinar', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         responseType: 'blob'
       });

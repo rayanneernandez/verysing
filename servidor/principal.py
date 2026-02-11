@@ -17,8 +17,7 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from pypdf import PdfReader, PdfWriter, PageObject
 
 import hashlib
-# --- Integração MongoDB ---
-from motor.motor_asyncio import AsyncIOMotorClient
+from supabase import create_client, Client
 from pydantic import BaseModel, Field, EmailStr
 from typing import Optional
 from dotenv import load_dotenv
@@ -27,27 +26,13 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Carrega variáveis de ambiente
 load_dotenv(os.path.join(BASE_DIR, '../.env'))
 
-MONGODB_URI = os.getenv("MONGODB_URI")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# Fallback manual para casos de BOM/codificação
-if not MONGODB_URI:
-    env_path = os.path.join(BASE_DIR, '../.env')
-    if os.path.exists(env_path):
-        try:
-            with open(env_path, 'r', encoding='utf-8-sig') as f:
-                for line in f:
-                    if line.startswith('MONGODB_URI='):
-                        MONGODB_URI = line.split('=', 1)[1].strip()
-                        os.environ['MONGODB_URI'] = MONGODB_URI
-                        break
-        except Exception as e:
-            print(f"Erro ao ler .env manualmente: {e}")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("⚠️ Credenciais do Supabase não encontradas. O banco não vai funcionar.")
 
-if not MONGODB_URI:
-    print("⚠️ MONGODB_URI não encontrada no .env, o banco não vai funcionar.")
-
-client = AsyncIOMotorClient(MONGODB_URI) if MONGODB_URI else AsyncIOMotorClient()
-db = client.verysing # Conecta no banco 'verysing'
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
 app = FastAPI()
 
@@ -62,10 +47,12 @@ class UsuarioCreate(BaseModel):
 @app.post("/usuarios")
 async def criar_usuario(usuario: UsuarioCreate):
     # 1. Verifica se E-mail ou CPF já existem
-    if await db.usuarios.find_one({"email": usuario.email}):
+    res_email = supabase.table("usuarios").select("id").eq("email", usuario.email).execute()
+    if res_email.data:
         raise HTTPException(status_code=400, detail="E-mail já cadastrado.")
     
-    if await db.usuarios.find_one({"cpf": usuario.cpf}):
+    res_cpf = supabase.table("usuarios").select("id").eq("cpf", usuario.cpf).execute()
+    if res_cpf.data:
         raise HTTPException(status_code=400, detail="CPF já cadastrado.")
 
     # 2. Prepara documento
@@ -79,32 +66,34 @@ async def criar_usuario(usuario: UsuarioCreate):
     
     if usuario.tipoPlano in ["profissional", "empresarial"]:
         agora = datetime.datetime.utcnow()
-        inicio_trial = agora
-        fim_trial = agora + datetime.timedelta(days=30) # 30 dias grátis
+        inicio_trial = agora.isoformat()
+        fim_trial = (agora + datetime.timedelta(days=30)).isoformat() # 30 dias grátis
 
     novo_usuario = {
         "nome": usuario.nome,
         "email": usuario.email,
         "cpf": usuario.cpf,
-        "senhaHash": senha_hash,
-        "tipoPlano": usuario.tipoPlano,
-        "statusPlano": status_plano,
-        "inicioTrial": inicio_trial,
-        "fimTrial": fim_trial,
-        "ativo": True,
-        "criadoEm": datetime.datetime.utcnow(),
-        "atualizadoEm": datetime.datetime.utcnow()
+        "senha_hash": senha_hash,
+        "tipo_plano": usuario.tipoPlano,
+        "status_plano": status_plano,
+        "inicio_trial": inicio_trial,
+        "fim_trial": fim_trial,
+        "ativo": True
     }
 
-    # 3. Salva no MongoDB (coleção 'usuarios')
-    resultado = await db.usuarios.insert_one(novo_usuario)
-    
-    return {
-        "id": str(resultado.inserted_id),
-        "mensagem": "Usuário criado com sucesso!",
-        "plano": usuario.tipoPlano,
-        "status": status_plano
-    }
+    # 3. Salva no Supabase (tabela 'usuarios')
+    try:
+        resultado = supabase.table("usuarios").insert(novo_usuario).execute()
+        user_data = resultado.data[0]
+        
+        return {
+            "id": user_data["id"],
+            "mensagem": "Usuário criado com sucesso!",
+            "plano": usuario.tipoPlano,
+            "status": status_plano
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Configuração de permissões (CORS)
 app.add_middleware(
@@ -318,7 +307,15 @@ def gerar_pagina_assinaturas(nome_contratante, nome_contratada, fonte, width, he
     return packet
 
 # --- Integração de Pagamento PIX e Contratos ---
-from pix_utils import gerar_payload_pix
+try:
+    from pix_utils import gerar_payload_pix
+except ImportError:
+    try:
+        from .pix_utils import gerar_payload_pix
+    except ImportError:
+        import sys
+        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+        from pix_utils import gerar_payload_pix
 import uuid
 
 class DadosPagamento(BaseModel):
@@ -653,23 +650,34 @@ async def assinar_contrato(
             with open(caminho_json, "w", encoding="utf-8") as f:
                 json.dump(metadados, f, ensure_ascii=False, indent=4)
 
-            # 3. Salva no MongoDB (Coleção 'documentos' - Português)
+            # 3. Salva no Supabase (Tabela 'documentos')
             try:
+                # Primeiro faz upload do PDF para o Storage
+                nome_arquivo_storage = f"{id_documento}.pdf"
+                path_storage = f"assinados/{nome_arquivo_storage}"
+                
+                # Reseta ponteiro do PDF para upload
+                pdf_final.seek(0)
+                try:
+                    supabase.storage.from_("verysing-docs").upload(path_storage, pdf_final.read())
+                except Exception as e_upload:
+                    print(f"⚠️ Erro no upload para Supabase Storage: {e_upload}")
+                
+                # Prepara dados para tabela
                 novo_documento = {
-                    "name": arquivo.filename,
-                    "hash": id_documento, # Usamos o ID curto para busca
-                    "path": caminho_pdf,
+                    "nome_arquivo": arquivo.filename,
+                    "storage_path": path_storage,
                     "status": "signed",
-                    "createdAt": datetime.datetime.utcnow(),
-                    "updatedAt": datetime.datetime.utcnow(),
-                    "ownerEmail": "desconhecido@temp.com", # Placeholder (sem auth ainda)
-                    "metadata": metadados # Salva o JSON completo dentro do banco
+                    "email_usuario": "desconhecido@temp.com", # Placeholder
+                    "destinatarios": json.dumps(metadados["signatarios"]), # Salva como JSON string
+                    # "metadata": metadados # Supabase pode não ter coluna JSONB 'metadata', checar schema
                 }
-                # Salva na coleção 'documentos'
-                await db.documentos.insert_one(novo_documento)
-                print(f"✅ Documento salvo no MongoDB (coleção 'documentos')")
+                
+                # Salva na tabela 'documentos'
+                supabase.table("documentos").insert(novo_documento).execute()
+                print(f"✅ Documento salvo no Supabase (tabela 'documentos')")
             except Exception as e:
-                print(f"⚠️ Erro ao salvar no MongoDB (não crítico): {e}")
+                print(f"⚠️ Erro ao salvar no Supabase (não crítico): {e}")
                 
         except Exception as e:
             print(f"Erro ao salvar persistencia: {e}")

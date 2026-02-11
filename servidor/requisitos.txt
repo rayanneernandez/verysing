@@ -6,6 +6,6 @@ cryptography
 reportlab
 pypdf
 qrcode[pil]
-motor
+supabase
 python-dotenv
 pydantic[email]

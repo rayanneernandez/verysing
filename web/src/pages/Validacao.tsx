@@ -16,7 +16,7 @@ function Validacao() {
 
   useEffect(() => {
     if (hash) {
-      axios.get(`https://localhost:8000/validar/dados/${hash}`)
+      axios.get(`/api/validar/dados/${hash}`)
         .then(res => {
             setDados(res.data);
             setLoading(false);
@@ -34,7 +34,7 @@ function Validacao() {
 
   const handleBaixar = () => {
      const link = document.createElement('a');
-     link.href = `https://localhost:8000/validar/arquivo/${hash}`;
+     link.href = `/api/validar/arquivo/${hash}`;
      link.download = `documento_assinado_${hash.substring(0,6)}.pdf`;
      document.body.appendChild(link);
      link.click();
@@ -43,7 +43,7 @@ function Validacao() {
 
   const handleBaixarOriginal = () => {
     const link = document.createElement('a');
-    link.href = `https://localhost:8000/validar/arquivo-original/${hash}`;
+    link.href = `/api/validar/arquivo-original/${hash}`;
     link.download = `documento_original_${hash.substring(0,6)}.pdf`;
     document.body.appendChild(link);
     link.click();
