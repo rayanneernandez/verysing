@@ -503,7 +503,6 @@ function Landing() {
         {/* Desktop Nav */}
         <div className="header-nav">
             <a href="#" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="nav-link" style={{ textDecoration: 'none', color: 'inherit' }}>{t('landing.nav.home')}</a>
-            <a onClick={(e) => { e.preventDefault(); navigate('/assinar'); }} href="/assinar" className="nav-link" style={{ textDecoration: 'none', color: 'inherit' }}>Assinar</a>
             <a href="#recursos" className="nav-link" style={{ textDecoration: 'none', color: 'inherit' }}>{t('landing.nav.features')}</a>
             <a href="#precos" className="nav-link" style={{ textDecoration: 'none', color: 'inherit' }}>{t('landing.nav.pricing')}</a>
             <a href="#sobre" className="nav-link" style={{ textDecoration: 'none', color: 'inherit' }}>{t('landing.nav.about')}</a>
@@ -618,7 +617,6 @@ function Landing() {
         </div>
         
         <a href="#" className="mobile-nav-link" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); setIsMenuOpen(false); }}>{t('landing.nav.home')}</a>
-        <a onClick={(e) => { e.preventDefault(); navigate('/assinar'); setIsMenuOpen(false); }} href="/assinar" className="mobile-nav-link">Assinar</a>
         <a href="#recursos" className="mobile-nav-link" onClick={() => { setIsMenuOpen(false); }}>{t('landing.nav.features')}</a>
         <a href="#precos" className="mobile-nav-link" onClick={() => { setIsMenuOpen(false); }}>{t('landing.nav.pricing')}</a>
         <a href="#sobre" className="mobile-nav-link" onClick={() => { setIsMenuOpen(false); }}>{t('landing.nav.about')}</a>
@@ -653,13 +651,6 @@ function Landing() {
         <div className="hero-buttons">
           <button onClick={irParaApp} className="btn-primary" style={{ fontSize: '1.1rem', padding: '1rem 2.5rem', borderRadius: '50px' }}>
             {t('landing.hero.start')} →
-          </button>
-          <button onClick={irParaAssinatura} style={{ 
-            backgroundColor: 'transparent', border: '1px solid rgba(255, 255, 255, 0.2)', color: 'white',
-            padding: '1rem 2rem', borderRadius: '50px', cursor: 'pointer', fontSize: '1.1rem',
-            backdropFilter: 'blur(5px)'
-          }}>
-            Assinar sem Login
           </button>
         </div>
       </section>
