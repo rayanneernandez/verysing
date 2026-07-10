@@ -34,19 +34,32 @@ except ImportError:
 # Carrega .env se existir (local development)
 load_dotenv()
 
+import re
+
+def limpar_env(valor: Optional[str]) -> str:
+    """Remove sujeira comum de copiar/colar: traços de lista, aspas,
+    espaços e quebras de linha (URL e chave JWT nunca têm espaços)."""
+    if not valor:
+        return ""
+    valor = valor.strip().strip('"').strip("'").lstrip("-").strip()
+    return re.sub(r"\s+", "", valor)
+
 # Inicialização do Supabase
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_URL = limpar_env(os.getenv("SUPABASE_URL"))
+SUPABASE_KEY = limpar_env(os.getenv("SUPABASE_KEY"))
 
 supabase: Optional[Client] = None
+SUPABASE_ERRO_INIT: Optional[str] = None
 
 if SUPABASE_URL and SUPABASE_KEY:
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         print("[OK] Cliente Supabase inicializado com sucesso.")
     except Exception as e:
+        SUPABASE_ERRO_INIT = f"{type(e).__name__}: {e}"
         print(f"[AVISO] Erro ao inicializar Supabase: {e}")
 else:
+    SUPABASE_ERRO_INIT = "Variaveis SUPABASE_URL/SUPABASE_KEY vazias ou ausentes."
     print("[AVISO] Credenciais do Supabase (SUPABASE_URL, SUPABASE_KEY) nao encontradas no ambiente.")
 
 app = FastAPI()
@@ -63,6 +76,7 @@ async def health():
         "supabase_url_definida": bool(os.getenv("SUPABASE_URL")),
         "supabase_key_definida": bool(os.getenv("SUPABASE_KEY")),
         "supabase_conectado": supabase is not None,
+        "erro_inicializacao": SUPABASE_ERRO_INIT,
         "gmail_configurado": bool(os.getenv("GMAIL_USER") and os.getenv("GMAIL_APP_PASSWORD")),
         "pix_configurado": bool(os.getenv("PIX_CHAVE")),
         "variaveis_encontradas": nomes_relevantes,
