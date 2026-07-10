@@ -291,12 +291,21 @@ def gerar_carimbo_pdf(hash_doc, link_validacao, width, height):
     packet.seek(0)
     return packet
 
+def _pos_real(cm, tm):
+    """Converte a posição do texto para coordenadas reais da página,
+    aplicando a matriz de transformação (cm) sobre a matriz de texto (tm).
+    Sem isso, PDFs gerados com escala/translação posicionam errado."""
+    x = tm[4] * cm[0] + tm[5] * cm[2] + cm[4]
+    y = tm[4] * cm[1] + tm[5] * cm[3] + cm[5]
+    return x, y
+
+
 def encontrar_coordenadas_assinatura(page):
     coords = {}
     def visitor_body(text, cm, tm, fontDict, fontSize):
         if text and text.strip():
             curr_text = text.strip().upper().replace(':', '').replace('.', '')
-            x, y = tm[4], tm[5]
+            x, y = _pos_real(cm, tm)
             if "CONTRATANTE" in curr_text: coords['contratante'] = (x, y)
             elif "CONTRATADA" in curr_text: coords['contratada'] = (x, y)
             if "___" in text:
@@ -335,23 +344,24 @@ def gerar_pagina_assinaturas(nome_contratante, nome_contratada, fonte, width, he
     if img_contratante:
         try:
             img = ImageReader(io.BytesIO(img_contratante))
-            c.drawImage(img, x_ct - 75, y_ct, width=150, height=60, mask='auto')
+            # anchor='s': a base do desenho encosta na linha de assinatura
+            c.drawImage(img, x_ct - 65, y_ct, width=130, height=45, mask='auto', preserveAspectRatio=True, anchor='s')
             c.drawCentredString(x_ct, y_ct - 10, f"Assinado em {data_assinatura}")
         except: pass
     elif nome_contratante:
-        c.setFont(font_name, 22)
-        c.drawCentredString(x_ct, y_ct, nome_contratante)
+        c.setFont(font_name, 18)
+        c.drawCentredString(x_ct, y_ct + 2, nome_contratante)
         c.setFont("Helvetica", 8)
         c.drawCentredString(x_ct, y_ct - 10, f"Assinado em {data_assinatura}")
     if img_contratada:
         try:
             img = ImageReader(io.BytesIO(img_contratada))
-            c.drawImage(img, x_cd - 75, y_cd, width=150, height=60, mask='auto')
+            c.drawImage(img, x_cd - 65, y_cd, width=130, height=45, mask='auto', preserveAspectRatio=True, anchor='s')
             c.drawCentredString(x_cd, y_cd - 10, f"Assinado em {data_assinatura}")
         except: pass
     elif nome_contratada:
-        c.setFont(font_name, 22)
-        c.drawCentredString(x_cd, y_cd, nome_contratada)
+        c.setFont(font_name, 18)
+        c.drawCentredString(x_cd, y_cd + 2, nome_contratada)
         c.setFont("Helvetica", 8)
         c.drawCentredString(x_cd, y_cd - 10, f"Assinado em {data_assinatura}")
     c.save()
@@ -388,13 +398,15 @@ def aplicar_assinatura_visual(pdf_bytes, id_documento, hash_visual, nome_contrat
                 pos_ct, pos_cd = None, None
                 linhas = coords_encontradas.get('linhas', [])
                 if linhas:
-                    linhas.sort(key=lambda k: k[1], reverse=True)
-                    if len(linhas) >= 1: pos_ct = (linhas[0][0] + 50, linhas[0][1] + 10) 
-                    if len(linhas) >= 2: pos_cd = (linhas[1][0] + 50, linhas[1][1] + 10)
+                    linhas.sort(key=lambda k: (-k[1], k[0]))
+                    if len(linhas) >= 1: pos_ct = (linhas[0][0] + 55, linhas[0][1] + 4)
+                    if len(linhas) >= 2: pos_cd = (linhas[1][0] + 55, linhas[1][1] + 4)
+                # O rótulo (CONTRATANTE/CONTRATADA) fica ABAIXO da linha:
+                # a assinatura deve ficar logo ACIMA do rótulo, sobre a linha.
                 if not pos_ct and 'contratante' in coords_encontradas:
-                    pos_ct = (coords_encontradas['contratante'][0] + 40, coords_encontradas['contratante'][1] - 50)
+                    pos_ct = (coords_encontradas['contratante'][0] + 45, coords_encontradas['contratante'][1] + 26)
                 if not pos_cd and 'contratada' in coords_encontradas:
-                    pos_cd = (coords_encontradas['contratada'][0] + 40, coords_encontradas['contratada'][1] - 50)
+                    pos_cd = (coords_encontradas['contratada'][0] + 45, coords_encontradas['contratada'][1] + 26)
                 pagina_destino = escritor.pages[indice_pagina_assinatura]
                 w_pag, h_pag = float(leitor.pages[indice_pagina_assinatura].mediabox.width), float(leitor.pages[indice_pagina_assinatura].mediabox.height)
                 assinaturas_pdf = PdfReader(gerar_pagina_assinaturas(nome_contratante, nome_contratada, fonte, w_pag, h_pag, img_contratante, img_contratada, False, pos_ct, pos_cd))
@@ -1368,6 +1380,434 @@ async def admin_alterar_plano(user_id: str, dados: AdminPlanoUpdate):
     if not res.data:
         raise HTTPException(status_code=404, detail="Usuário não encontrado.")
     return {"mensagem": "Usuário atualizado."}
+
+
+# ============================================================
+# ENVELOPES DE ASSINATURA (fluxo estilo DocuSign)
+# ============================================================
+
+PAPEIS_ASSINATURA = ("CONTRATANTE", "CONTRATADA", "TESTEMUNHA", "INTERVENIENTE")
+
+
+def coletar_ancoras_pagina(page):
+    """Coleta as âncoras de assinatura de uma página: linhas (___) e
+    rótulos de papel (CONTRATANTE, CONTRATADA...)."""
+    ancoras = {"linhas": [], "papeis": []}
+
+    def visitor(text, cm, tm, fontDict, fontSize):
+        if not text or not text.strip():
+            return
+        limpo = text.strip().upper().replace(":", "").replace(".", "")
+        x, y = _pos_real(cm, tm)
+        for papel in PAPEIS_ASSINATURA:
+            if papel in limpo:
+                ancoras["papeis"].append({"papel": papel, "x": x, "y": y})
+                break
+        if "___" in text:
+            ancoras["linhas"].append((x, y))
+
+    try:
+        page.extract_text(visitor_text=visitor)
+    except Exception:
+        pass
+    return ancoras
+
+
+def posicionar_signatarios(leitor, signatarios):
+    """Define onde cada signatário assina. Procura nas últimas páginas os
+    rótulos do papel (a assinatura fica logo ACIMA do rótulo, na linha) ou
+    linhas ___. Retorna lista de (indice_pagina, x, y) ou None (vai para
+    página extra de assinaturas)."""
+    posicoes = [None] * len(signatarios)
+    total = len(leitor.pages)
+    for page_idx in range(total - 1, max(-1, total - 4), -1):
+        ancoras = coletar_ancoras_pagina(leitor.pages[page_idx])
+        if not ancoras["papeis"] and not ancoras["linhas"]:
+            continue
+
+        # Ordena da esquerda p/ direita, de cima p/ baixo
+        papeis = sorted(ancoras["papeis"], key=lambda a: (-a["y"], a["x"]))
+        linhas = sorted(ancoras["linhas"], key=lambda l: (-l[1], l[0]))
+        usados_papel, usadas_linhas = set(), set()
+
+        # 1º: casa signatário com rótulo do MESMO papel, na ordem
+        for i, sig in enumerate(signatarios):
+            papel_sig = (sig.get("papel") or "").strip().upper()
+            for j, anc in enumerate(papeis):
+                if j in usados_papel:
+                    continue
+                if anc["papel"] == papel_sig:
+                    posicoes[i] = (page_idx, anc["x"] + 45, anc["y"] + 26)
+                    usados_papel.add(j)
+                    break
+
+        # 2º: quem sobrou vai para as linhas ___ livres
+        for i, sig in enumerate(signatarios):
+            if posicoes[i] is not None:
+                continue
+            for j, (lx, ly) in enumerate(linhas):
+                if j in usadas_linhas:
+                    continue
+                posicoes[i] = (page_idx, lx + 55, ly + 4)
+                usadas_linhas.add(j)
+                break
+        break
+    return posicoes
+
+
+def desenhar_assinatura_em(c, x, y, nome, fonte, img_bytes, data_str):
+    """Desenha uma assinatura 'sentada' na âncora (x, y): a base da
+    assinatura fica na linha, com o selo pequeno acima."""
+    if img_bytes:
+        try:
+            img = ImageReader(io.BytesIO(img_bytes))
+            c.drawImage(img, x - 65, y - 2, width=130, height=42,
+                        mask='auto', preserveAspectRatio=True, anchor='s')
+        except Exception:
+            img_bytes = None
+    if not img_bytes and nome:
+        font_name = "Times-Italic" if fonte in ("manuscrita", "cursiva_simples", "padrao", None, "") else "Times-Roman"
+        c.setFont(font_name, 16)
+        c.setFillColorRGB(0.1, 0.1, 0.3)
+        c.drawCentredString(x, y + 2, nome)
+    c.setFont("Helvetica", 5.5)
+    c.setFillColorRGB(0.35, 0.35, 0.35)
+    c.drawCentredString(x, y + 46, "Documento assinado digitalmente")
+    c.setFont("Helvetica-Bold", 5.5)
+    c.drawCentredString(x, y + 40, (nome or "").upper()[:48])
+    c.setFont("Helvetica", 5.5)
+    c.drawCentredString(x, y + 34, f"Data: {data_str}")
+
+
+def gerar_pdf_final_envelope(pdf_bytes, assinaturas):
+    """Aplica todas as assinaturas do envelope no PDF (nas âncoras achadas
+    automaticamente; quem não tiver âncora vai para uma página extra)."""
+    leitor = PdfReader(io.BytesIO(pdf_bytes))
+    escritor = PdfWriter()
+    posicoes = posicionar_signatarios(leitor, assinaturas)
+
+    overlays = {}  # page_idx -> lista de (assinatura, x, y)
+    sem_posicao = []
+    for sig, pos in zip(assinaturas, posicoes):
+        if pos:
+            overlays.setdefault(pos[0], []).append((sig, pos[1], pos[2]))
+        else:
+            sem_posicao.append(sig)
+
+    for idx, pagina in enumerate(leitor.pages):
+        w, h = float(pagina.mediabox.width), float(pagina.mediabox.height)
+        nova = PageObject.create_blank_page(width=w, height=h)
+        nova.merge_page(pagina)
+        if idx in overlays:
+            packet = io.BytesIO()
+            c = canvas.Canvas(packet, pagesize=(w, h))
+            for sig, x, y in overlays[idx]:
+                data_str = sig.get("assinado_em_fmt") or datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+                desenhar_assinatura_em(c, x, y, sig.get("nome_signatario"), sig.get("fonte"),
+                                       sig.get("img_bytes"), data_str)
+            c.save()
+            packet.seek(0)
+            nova.merge_page(PdfReader(packet).pages[0])
+        escritor.add_page(nova)
+
+    if sem_posicao:
+        w, h = A4
+        packet = io.BytesIO()
+        c = canvas.Canvas(packet, pagesize=(w, h))
+        c.setFont("Helvetica-Bold", 14)
+        c.drawCentredString(w / 2, h - 90, "PÁGINA DE ASSINATURAS")
+        c.setFont("Helvetica", 9)
+        c.drawCentredString(w / 2, h - 110, "Assinado digitalmente conforme Lei 14.063/2020")
+        for i, sig in enumerate(sem_posicao):
+            col, lin = i % 2, i // 2
+            x = w * (0.28 + 0.44 * col)
+            y = h - 220 - lin * 130
+            data_str = sig.get("assinado_em_fmt") or datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+            desenhar_assinatura_em(c, x, y, sig.get("nome_signatario"), sig.get("fonte"),
+                                   sig.get("img_bytes"), data_str)
+            c.setLineWidth(0.8)
+            c.line(x - 80, y - 4, x + 80, y - 4)
+            c.setFont("Helvetica", 8)
+            c.setFillColorRGB(0.2, 0.2, 0.2)
+            c.drawCentredString(x, y - 16, f"{sig.get('nome_signatario','')} — {sig.get('tipo','')}")
+        c.save()
+        packet.seek(0)
+        pagina_extra = PageObject.create_blank_page(width=w, height=h)
+        pagina_extra.merge_page(PdfReader(packet).pages[0])
+        escritor.add_page(pagina_extra)
+
+    saida = io.BytesIO()
+    escritor.write(saida)
+    saida.seek(0)
+    return saida.read()
+
+
+@app.post("/api/envelopes")
+async def criar_envelope(
+    file: UploadFile = File(...),
+    email_usuario: str = Form(...),
+    assunto: str = Form(...),
+    mensagem: str = Form(""),
+    prazo: str = Form(None),
+    signatarios: str = Form(...),  # JSON: [{nome, email, papel}]
+):
+    db = verificar_supabase()
+    usuario = obter_usuario(email_usuario)
+    remetente = credenciais_envio(usuario)
+
+    try:
+        lista_sig = json.loads(signatarios)
+        assert isinstance(lista_sig, list) and len(lista_sig) > 0
+    except Exception:
+        raise HTTPException(status_code=400, detail="Lista de signatários inválida.")
+
+    conteudo = await file.read()
+    env_id = uuid.uuid4().hex
+    storage_path = f"envelopes/{env_id}/original.pdf"
+    db.storage.from_("verysing-docs").upload(storage_path, conteudo)
+
+    envelope = db.table("envelopes").insert({
+        "email_usuario": email_usuario,
+        "titulo": assunto,
+        "mensagem": mensagem,
+        "storage_path": storage_path,
+        "nome_arquivo": file.filename,
+        "status": "aguardando",
+        "prazo": prazo or None,
+    }).execute().data[0]
+
+    falhas = []
+    for sig in lista_sig:
+        token = uuid.uuid4().hex
+        db.table("assinaturas").insert({
+            "envelope_id": envelope["id"],
+            "nome_signatario": sig.get("nome"),
+            "email_signatario": sig.get("email"),
+            "tipo": (sig.get("papel") or "SIGNATÁRIO").upper(),
+            "token": token,
+            "status": "pendente",
+        }).execute()
+
+        link = f"{url_base()}/assinatura/{token}"
+        prazo_txt = ""
+        if prazo:
+            try:
+                prazo_txt = f"\n\nPrazo para assinatura: {datetime.datetime.fromisoformat(prazo).strftime('%d/%m/%Y')}."
+            except Exception:
+                prazo_txt = f"\n\nPrazo para assinatura: {prazo}."
+        corpo = (
+            f"Olá, {sig.get('nome')}!\n\n"
+            f"{usuario.get('nome', 'Alguém')} enviou o documento \"{file.filename}\" para você assinar digitalmente."
+            + (f"\n\nMensagem: {mensagem}" if mensagem else "")
+            + prazo_txt
+            + f"\n\n➡ Para revisar e assinar, acesse:\n{link}\n\n"
+            "A assinatura é eletrônica, com validade jurídica (Lei 14.063/2020)."
+        )
+        html = montar_html_comunicado(corpo, logo_cid=False, pixel_url=None).replace(
+            link, f'<a href="{link}" style="display:inline-block;background:#2563eb;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">Assinar documento</a>'
+        )
+        try:
+            enviar_email_smtp(sig.get("email"), f"Assinatura pendente: {assunto}", html, credenciais=remetente)
+        except HTTPException:
+            raise
+        except Exception as e:
+            falhas.append({"email": sig.get("email"), "erro": str(e)})
+
+    return {
+        "id": envelope["id"],
+        "mensagem": "Envelope enviado! Cada signatário recebeu um link exclusivo por e-mail." if not falhas
+                    else f"Envelope criado, mas {len(falhas)} e-mail(s) falharam.",
+        "falhas": falhas,
+    }
+
+
+@app.get("/api/envelopes")
+async def listar_envelopes(email: str):
+    db = verificar_supabase()
+    envs = db.table("envelopes").select("*").eq("email_usuario", email).order("criado_em", desc=True).execute().data
+    resultado = []
+    for e in envs:
+        sigs = db.table("assinaturas").select("nome_signatario, email_signatario, tipo, status, assinado_em").eq("envelope_id", e["id"]).execute().data
+        resultado.append({**e, "signatarios": sigs})
+    return resultado
+
+
+def _buscar_assinatura_por_token(db, token: str):
+    res = db.table("assinaturas").select("*").eq("token", token).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Link de assinatura inválido ou expirado.")
+    return res.data[0]
+
+
+@app.get("/api/envelope-assinatura/{token}")
+async def dados_assinatura_publica(token: str):
+    db = verificar_supabase()
+    sig = _buscar_assinatura_por_token(db, token)
+    env = db.table("envelopes").select("*").eq("id", sig["envelope_id"]).execute().data[0]
+    todos = db.table("assinaturas").select("nome_signatario, tipo, status").eq("envelope_id", env["id"]).execute().data
+    return {
+        "signatario": {"nome": sig["nome_signatario"], "papel": sig["tipo"], "status": sig["status"]},
+        "documento": {"titulo": env.get("titulo"), "nome_arquivo": env.get("nome_arquivo"),
+                      "mensagem": env.get("mensagem"), "prazo": env.get("prazo"),
+                      "status": env.get("status"), "remetente": env.get("email_usuario")},
+        "signatarios": todos,
+    }
+
+
+@app.get("/api/envelope-assinatura/{token}/pdf")
+async def pdf_assinatura_publica(token: str):
+    db = verificar_supabase()
+    sig = _buscar_assinatura_por_token(db, token)
+    env = db.table("envelopes").select("storage_path, storage_final, status").eq("id", sig["envelope_id"]).execute().data[0]
+    path = env.get("storage_final") if env.get("status") == "concluido" and env.get("storage_final") else env["storage_path"]
+    file_bytes = db.storage.from_("verysing-docs").download(path)
+    return StreamingResponse(io.BytesIO(file_bytes), media_type="application/pdf")
+
+
+class AssinaturaPublica(BaseModel):
+    nome: Optional[str] = None
+    fonte: Optional[str] = "manuscrita"
+    assinatura_base64: Optional[str] = None  # desenho (PNG base64)
+
+
+from fastapi import Request
+
+
+@app.post("/api/envelope-assinatura/{token}/assinar")
+async def assinar_publicamente(token: str, dados: AssinaturaPublica, request: Request):
+    db = verificar_supabase()
+    sig = _buscar_assinatura_por_token(db, token)
+    if sig["status"] == "assinado":
+        raise HTTPException(status_code=400, detail="Este documento já foi assinado por você.")
+
+    env = db.table("envelopes").select("*").eq("id", sig["envelope_id"]).execute().data[0]
+    if env.get("prazo"):
+        try:
+            prazo_dt = datetime.datetime.fromisoformat(str(env["prazo"]).replace("Z", "+00:00"))
+            if datetime.datetime.now(prazo_dt.tzinfo) > prazo_dt:
+                raise HTTPException(status_code=400, detail="O prazo de assinatura deste envelope expirou.")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+    img_path = None
+    if dados.assinatura_base64:
+        try:
+            b64 = dados.assinatura_base64.split(",", 1)[1] if "," in dados.assinatura_base64 else dados.assinatura_base64
+            img_bytes = base64.b64decode(b64)
+            img_path = f"envelopes/{env['id']}/sig_{token}.png"
+            db.storage.from_("verysing-docs").upload(img_path, img_bytes, {"content-type": "image/png"})
+        except Exception:
+            img_path = None
+
+    ip = request.client.host if request.client else None
+    db.table("assinaturas").update({
+        "status": "assinado",
+        "assinado_em": datetime.datetime.utcnow().isoformat(),
+        "ip_assinatura": ip,
+        "fonte": dados.fonte,
+        "img_path": img_path,
+        "nome_signatario": dados.nome or sig["nome_signatario"],
+    }).eq("id", sig["id"]).execute()
+
+    # Verifica se todos assinaram
+    todas = db.table("assinaturas").select("*").eq("envelope_id", env["id"]).execute().data
+    pendentes = [a for a in todas if a["status"] != "assinado"]
+    if pendentes:
+        db.table("envelopes").update({"status": "parcial"}).eq("id", env["id"]).execute()
+        return {"mensagem": "Assinatura registrada! Aguardando os demais signatários.",
+                "concluido": False, "pendentes": len(pendentes)}
+
+    # --- Todos assinaram: gera o PDF final ---
+    original = db.storage.from_("verysing-docs").download(env["storage_path"])
+    assinaturas_render = []
+    for a in todas:
+        img_bytes = None
+        if a.get("img_path"):
+            try:
+                img_bytes = db.storage.from_("verysing-docs").download(a["img_path"])
+            except Exception:
+                img_bytes = None
+        dt_fmt = ""
+        if a.get("assinado_em"):
+            try:
+                dt_fmt = datetime.datetime.fromisoformat(a["assinado_em"].replace("Z", "+00:00")).strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                dt_fmt = str(a["assinado_em"])[:16]
+        assinaturas_render.append({
+            "nome_signatario": a.get("nome_signatario"),
+            "tipo": a.get("tipo"),
+            "fonte": a.get("fonte"),
+            "img_bytes": img_bytes,
+            "assinado_em_fmt": dt_fmt,
+        })
+
+    pdf_assinado = gerar_pdf_final_envelope(original, assinaturas_render)
+
+    # Carimbo digital (hash + QR de validação) em todas as páginas
+    chave = carregar_chave_privada()
+    if chave:
+        ass_digital = chave.sign(pdf_assinado, padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH), hashes.SHA256())
+        hash_visual = base64.b64encode(ass_digital).decode("utf-8")
+        id_doc = hashlib.sha256(ass_digital).hexdigest()
+    else:
+        hash_visual = hashlib.sha256(pdf_assinado).hexdigest()
+        id_doc = hash_visual
+
+    leitor_final = PdfReader(io.BytesIO(pdf_assinado))
+    escritor_final = PdfWriter()
+    link_validacao = f"{url_base()}/validar?hash={id_doc}"
+    for pagina in leitor_final.pages:
+        w, h = float(pagina.mediabox.width), float(pagina.mediabox.height)
+        nova = PageObject.create_blank_page(width=w, height=h)
+        nova.merge_page(pagina)
+        nova.merge_page(PdfReader(gerar_carimbo_pdf(hash_visual, link_validacao, w, h)).pages[0])
+        escritor_final.add_page(nova)
+    saida = io.BytesIO()
+    escritor_final.write(saida)
+    pdf_final = saida.getvalue()
+
+    path_final = f"envelopes/{env['id']}/final.pdf"
+    db.storage.from_("verysing-docs").upload(path_final, pdf_final)
+    # Também disponibiliza na validação pública
+    db.storage.from_("verysing-docs").upload(f"assinados/{id_doc}.pdf", pdf_final)
+    metadados = {
+        "hash": hash_visual, "id_curto": id_doc,
+        "data_assinatura": datetime.datetime.now().strftime("%d/%m/%Y, %H:%M:%S"),
+        "signatarios": [{"nome": a["nome_signatario"], "tipo": a["tipo"]} for a in assinaturas_render],
+    }
+    db.storage.from_("verysing-docs").upload(f"assinados/{id_doc}.json",
+                                             json.dumps(metadados, ensure_ascii=False).encode("utf-8"),
+                                             {"content-type": "application/json"})
+
+    db.table("envelopes").update({"status": "concluido", "storage_final": path_final}).eq("id", env["id"]).execute()
+    db.table("documentos").insert({
+        "nome_arquivo": f"ASSINADO_{env.get('nome_arquivo') or 'documento.pdf'}",
+        "email_usuario": env["email_usuario"],
+        "storage_path": path_final,
+        "status": "signed",
+        "categoria": "Envelope",
+        "tipo": "pdf",
+    }).execute()
+
+    # Envia o PDF final para todos
+    criador = obter_usuario(env["email_usuario"])
+    remetente = credenciais_envio(criador)
+    destinos = [a["email_signatario"] for a in todas if a.get("email_signatario")] + [env["email_usuario"]]
+    corpo = (f"O documento \"{env.get('nome_arquivo')}\" foi assinado por todos os signatários. ✔\n\n"
+             f"O PDF final assinado está em anexo.\n\nValide a autenticidade em: {link_validacao}")
+    html = montar_html_comunicado(corpo, logo_cid=False, pixel_url=None)
+    for destino in set(destinos):
+        try:
+            enviar_email_smtp(destino, f"Documento assinado: {env.get('titulo')}", html,
+                              anexo_pdf=pdf_final, nome_anexo=f"assinado_{env.get('nome_arquivo') or 'documento.pdf'}",
+                              credenciais=remetente)
+        except Exception:
+            pass
+
+    return {"mensagem": "Documento assinado por todos! O PDF final foi enviado por e-mail.",
+            "concluido": True, "id_validacao": id_doc}
 
 
 @app.get("/api/admin/stats")

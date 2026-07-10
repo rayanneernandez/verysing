@@ -54,7 +54,7 @@ const ModelosContrato: React.FC = () => {
   const wrapContractLayout = (content: string) => `
     <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #334155;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3rem; padding-bottom: 1.5rem; border-bottom: 2px solid #e2e8f0;">
-        <img src="${logoPng}" alt="Logo" style="height: 40px; object-fit: contain;" />
+        <img src="${logoPng}" alt="Logo" style="height: 22px; max-width: 110px; object-fit: contain;" />
         <div style="text-align: right; font-size: 0.8rem; color: #64748b;">
           <strong>Data:</strong> ${new Date().toLocaleDateString()}<br/>
           <strong>Ref:</strong> ${docHash ? docHash.substring(0, 9) : ''}

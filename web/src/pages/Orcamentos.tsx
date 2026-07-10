@@ -40,6 +40,12 @@ export default function Orcamentos() {
   const [carregando, setCarregando] = useState(true);
   const [criando, setCriando] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [toast, setToast] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null);
+
+  const mostrarToast = (tipo: 'sucesso' | 'erro', texto: string) => {
+    setToast({ tipo, texto });
+    setTimeout(() => setToast(null), 4500);
+  };
 
   // Formulário
   const [titulo, setTitulo] = useState('');
@@ -89,7 +95,7 @@ export default function Orcamentos() {
   const salvar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!titulo || !clienteNome || itens.every(i => !i.descricao)) {
-      alert('Preencha o título, o cliente e ao menos um item.');
+      mostrarToast('erro', 'Preencha o título, o cliente e ao menos um item.');
       return;
     }
     setSalvando(true);
@@ -105,13 +111,13 @@ export default function Orcamentos() {
         desconto,
         itens: itens.filter(i => i.descricao),
       });
-      alert('Orçamento criado com sucesso!');
+      mostrarToast('sucesso', 'Orçamento criado com sucesso!');
       limparFormulario();
       setCriando(false);
       carregar();
     } catch (err: any) {
       const detalhe = err.response?.data?.detail;
-      alert(typeof detalhe === 'string' ? detalhe : 'Erro ao criar orçamento.');
+      mostrarToast('erro', typeof detalhe === 'string' ? detalhe : 'Erro ao criar orçamento.');
     } finally {
       setSalvando(false);
     }
@@ -123,16 +129,16 @@ export default function Orcamentos() {
 
   const enviarEmail = async (orc: Orcamento) => {
     if (!orc.cliente_email) {
-      alert('Este orçamento não tem e-mail do cliente cadastrado.');
+      mostrarToast('erro', 'Este orçamento não tem e-mail do cliente cadastrado.');
       return;
     }
     try {
       const r = await axios.post(`${API_URL}/api/orcamentos/${orc.id}/enviar`);
-      alert(r.data.mensagem);
+      mostrarToast('sucesso', r.data.mensagem);
       carregar();
     } catch (err: any) {
       const detalhe = err.response?.data?.detail;
-      alert(typeof detalhe === 'string' ? detalhe : 'Erro ao enviar orçamento.');
+      mostrarToast('erro', typeof detalhe === 'string' ? detalhe : 'Erro ao enviar orçamento.');
     }
   };
 
@@ -141,7 +147,7 @@ export default function Orcamentos() {
       await axios.put(`${API_URL}/api/orcamentos/${orc.id}/status`, { status });
       carregar();
     } catch {
-      alert('Erro ao atualizar status.');
+      mostrarToast('erro', 'Erro ao atualizar status.');
     }
   };
 
@@ -151,7 +157,7 @@ export default function Orcamentos() {
       await axios.delete(`${API_URL}/api/orcamentos/${orc.id}`);
       carregar();
     } catch {
-      alert('Erro ao excluir orçamento.');
+      mostrarToast('erro', 'Erro ao excluir orçamento.');
     }
   };
 
@@ -166,6 +172,26 @@ export default function Orcamentos() {
 
   return (
     <DashboardLayout title="Orçamentos">
+      {toast && (
+        <div
+          style={{
+            position: 'fixed', top: '1.5rem', right: '1.5rem', zIndex: 2000,
+            display: 'flex', alignItems: 'center', gap: '0.75rem',
+            background: toast.tipo === 'sucesso' ? '#f0fdf4' : '#fef2f2',
+            border: `1px solid ${toast.tipo === 'sucesso' ? '#bbf7d0' : '#fecaca'}`,
+            color: toast.tipo === 'sucesso' ? '#15803d' : '#b91c1c',
+            padding: '0.9rem 1.25rem', borderRadius: '10px',
+            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)',
+            fontWeight: 500, fontSize: '0.95rem', maxWidth: '380px',
+            animation: 'toastIn 0.25s ease',
+          }}
+        >
+          <span style={{ fontSize: '1.2rem' }}>{toast.tipo === 'sucesso' ? '✅' : '⚠️'}</span>
+          <span style={{ flex: 1 }}>{toast.texto}</span>
+          <button onClick={() => setToast(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontSize: '1.1rem', padding: 0 }}>×</button>
+          <style>{`@keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+        </div>
+      )}
       <div className="page-container" style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
           <div>

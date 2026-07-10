@@ -50,9 +50,11 @@ function EnviarDocumento() {
     setRecipients(recipients.map(r => r.id === id ? { ...r, [field]: value } : r));
   };
 
+  const [sending, setSending] = useState(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!file) {
       alert(t('send.select_doc') || 'Selecione um documento para enviar.');
       return;
@@ -63,23 +65,42 @@ function EnviarDocumento() {
       return;
     }
 
+    // Monta a lista de signatários (incluindo você, se marcou "eu também assino")
+    const signatarios = recipients
+      .filter(r => r.name && r.email)
+      .map(r => ({ nome: r.name, email: r.email, papel: r.role }));
+
+    if (selfSign) {
+      if (!senderName || !senderEmail) {
+        alert('Preencha seu nome e e-mail em "Seus Dados".');
+        return;
+      }
+      signatarios.unshift({ nome: senderName, email: senderEmail, papel: senderRole });
+    }
+
+    if (signatarios.length === 0) {
+      alert('Adicione ao menos um signatário com nome e e-mail.');
+      return;
+    }
+
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('email', userEmail);
-    formData.append('categoria', 'Enviado');
-    
-    // Adicionar metadados do envio
-    formData.append('destinatarios', JSON.stringify(recipients));
+    formData.append('email_usuario', userEmail);
     formData.append('assunto', subject);
     formData.append('mensagem', message);
+    if (deadline) formData.append('prazo', deadline);
+    formData.append('signatarios', JSON.stringify(signatarios));
 
+    setSending(true);
     try {
-      await axios.post(`${API_URL}/api/documentos/upload`, formData);
-      alert('Documento enviado com sucesso!');
+      const response = await axios.post(`${API_URL}/api/envelopes`, formData);
+      alert(response.data.mensagem || 'Envelope enviado! Cada signatário recebeu um link por e-mail.');
       navigate('/documentos');
-    } catch (error) {
-      console.error('Erro ao enviar:', error);
-      alert('Erro ao enviar documento. Tente novamente.');
+    } catch (error: any) {
+      const detalhe = error.response?.data?.detail;
+      alert(typeof detalhe === 'string' ? detalhe : 'Erro ao enviar envelope. Tente novamente.');
+    } finally {
+      setSending(false);
     }
   };
 
@@ -298,8 +319,8 @@ function EnviarDocumento() {
             </section>
 
             <div className="form-actions">
-              <button type="submit" className="btn-submit-send">
-                {t('send.submit')}
+              <button type="submit" className="btn-submit-send" disabled={sending} style={{ opacity: sending ? 0.7 : 1 }}>
+                {sending ? 'Enviando envelope...' : t('send.submit')}
               </button>
             </div>
           </form>

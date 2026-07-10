@@ -133,21 +133,22 @@ export default function EnviarComunicado() {
               <strong>Remetente: </strong>
               {remetenteConfigurado
                 ? <span style={{ color: '#16a34a' }}>seus e-mails saem de <strong>{remetenteEmail}</strong> ✓</span>
-                : <span style={{ color: '#d97706' }}>usando o e-mail padrão do sistema (as respostas chegam no seu e-mail)</span>}
+                : <span style={{ color: '#2563eb' }}>enviando pelo e-mail do VerySing, com o seu nome — as respostas chegam no seu e-mail ✓</span>}
             </div>
             <button
               type="button"
               onClick={() => setMostrarConfigRemetente(!mostrarConfigRemetente)}
               style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#475569', padding: '0.45rem 1rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
             >
-              {mostrarConfigRemetente ? 'Fechar' : remetenteConfigurado ? 'Alterar' : 'Usar meu próprio e-mail'}
+              {mostrarConfigRemetente ? 'Fechar' : remetenteConfigurado ? 'Alterar' : 'Usar meu próprio Gmail (opcional)'}
             </button>
           </div>
 
           {mostrarConfigRemetente && (
             <div style={{ marginTop: '1rem', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
               <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '0.75rem', lineHeight: 1.5 }}>
-                Para os comunicados saírem do <strong>seu</strong> Gmail: ative a verificação em 2 etapas na sua conta Google,
+                <strong>Isso é opcional!</strong> Sem configurar nada, seus comunicados já saem pelo e-mail do VerySing com o seu nome.
+                Se preferir que saiam do <strong>seu próprio Gmail</strong>: ative a verificação em 2 etapas na sua conta Google,
                 gere uma <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb' }}>senha de app</a> e
                 cole abaixo. A senha fica guardada só para envio dos seus e-mails.
               </p>
@@ -309,7 +310,7 @@ export default function EnviarComunicado() {
               </div>
               
               {/* Content */}
-              <div style={{ padding: '2.5rem', color: '#334155', lineHeight: '1.6', fontSize: '1rem', whiteSpace: 'pre-wrap', minHeight: '200px' }}>
+              <div style={{ padding: '2.5rem', color: '#334155', lineHeight: '1.6', fontSize: '1rem', whiteSpace: 'pre-wrap', minHeight: '200px', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                 {message ? message : <span style={{ color: '#cbd5e1' }}>{t('announce.message_label')}...</span>}
               </div>
 
@@ -327,6 +328,14 @@ export default function EnviarComunicado() {
             grid-template-columns: 1fr 1fr;
             gap: 2rem;
             align-items: start;
+          }
+          /* Impede que texto longo sem espaços estoure as colunas do grid */
+          .split-layout > * {
+            min-width: 0;
+          }
+          .preview-column {
+            overflow-wrap: anywhere;
+            word-break: break-word;
           }
           @media (max-width: 968px) {
             .split-layout {

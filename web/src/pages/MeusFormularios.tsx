@@ -87,14 +87,80 @@ const respostasMock: Record<string, RespostaFormulario[]> = {
 
 function MeusFormularios() {
   const { t } = useLanguage();
-  const [formularioSelecionadoId, setFormularioSelecionadoId] = useState<string | null>(
-    formulariosMock[0]?.id ?? null
-  );
+  // null = tela de lista; com id = tela de respostas do formulário
+  const [formularioSelecionadoId, setFormularioSelecionadoId] = useState<string | null>(null);
 
   const formularioSelecionado = formulariosMock.find(f => f.id === formularioSelecionadoId) || null;
   const respostasSelecionadas: RespostaFormulario[] =
     (formularioSelecionado && respostasMock[formularioSelecionado.id]) || [];
 
+  // ===== TELA DE RESPOSTAS =====
+  if (formularioSelecionado) {
+    return (
+      <DashboardLayout title={`Respostas — ${formularioSelecionado.titulo}`}>
+        <div className="page-container" style={{ padding: '2rem', maxWidth: '1000px', margin: '0 auto' }}>
+          <button
+            onClick={() => setFormularioSelecionadoId(null)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              background: 'white', border: '1px solid #e2e8f0', color: '#475569',
+              padding: '0.6rem 1.2rem', borderRadius: '8px', cursor: 'pointer',
+              fontWeight: 600, fontSize: '0.9rem', marginBottom: '1.5rem'
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            Voltar para Meus Formulários
+          </button>
+
+          <div className="content-card" style={{ background: 'white', padding: '2rem', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div>
+                <h2 style={{ color: '#0f172a', marginBottom: '0.25rem', fontSize: '1.3rem', fontWeight: 600 }}>
+                  {formularioSelecionado.titulo}
+                </h2>
+                <p style={{ color: '#64748b', fontSize: '0.9rem' }}>
+                  Criado em {formularioSelecionado.criadoEm} · Enviado para {formularioSelecionado.destinatario}
+                </p>
+              </div>
+              <span style={{ background: '#eff6ff', color: '#2563eb', padding: '0.35rem 0.9rem', borderRadius: '999px', fontSize: '0.85rem', fontWeight: 700 }}>
+                {formularioSelecionado.totalRespostas} respostas
+              </span>
+            </div>
+
+            {respostasSelecionadas.length === 0 && (
+              <p style={{ color: '#94a3b8', fontSize: '0.9rem', textAlign: 'center', padding: '2rem' }}>
+                Ainda não há respostas para este formulário.
+              </p>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {respostasSelecionadas.map(resposta => (
+                <div key={resposta.id} style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '1rem', background: '#f8fafc' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                    <div>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#0f172a' }}>{resposta.respondente}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{resposta.email}</div>
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{resposta.dataHora}</div>
+                  </div>
+                  <div style={{ borderTop: '1px solid #e2e8f0', marginTop: '0.75rem', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    {resposta.respostas.map((r, index) => (
+                      <div key={index}>
+                        <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569' }}>{r.pergunta}</div>
+                        <div style={{ fontSize: '0.9rem', color: '#0f172a' }}>{r.resposta}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // ===== TELA DE LISTA =====
   return (
     <DashboardLayout title={t('forms.list')}>
       <div
@@ -317,126 +383,6 @@ function MeusFormularios() {
             </div>
           </div>
 
-          <div
-            className="content-card"
-            style={{
-              background: 'white',
-              padding: '2rem',
-              borderRadius: '8px',
-              border: '1px solid #e2e8f0',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-              width: '100%'
-            }}
-          >
-            <div style={{ marginBottom: '1.5rem' }}>
-              <h2
-                style={{
-                  color: '#0f172a',
-                  marginBottom: '0.25rem',
-                  fontSize: '1.3rem',
-                  fontWeight: 600
-                }}
-              >
-                {t('forms.responses')}
-              </h2>
-              <p style={{ color: '#64748b', fontSize: '0.9rem' }}>
-                Visualize as respostas recebidas do formulário selecionado.
-              </p>
-            </div>
-
-            {!formularioSelecionado && (
-              <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
-                Selecione um formulário na lista ao lado para ver as respostas.
-              </p>
-            )}
-
-            {formularioSelecionado && respostasSelecionadas.length === 0 && (
-              <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
-                Ainda não há respostas para este formulário.
-              </p>
-            )}
-
-            {formularioSelecionado && respostasSelecionadas.length > 0 && (
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '1rem'
-                }}
-              >
-                {respostasSelecionadas.map(resposta => (
-                  <div
-                    key={resposta.id}
-                    style={{
-                      borderRadius: '8px',
-                      border: '1px solid #e2e8f0',
-                      padding: '1rem',
-                      background: '#f8fafc'
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        marginBottom: '0.5rem'
-                      }}
-                    >
-                      <div>
-                        <div
-                          style={{
-                            fontSize: '0.9rem',
-                            fontWeight: 600,
-                            color: '#0f172a'
-                          }}
-                        >
-                          {resposta.respondente}
-                        </div>
-                        <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                          {resposta.email}
-                        </div>
-                      </div>
-                      <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                        {resposta.dataHora}
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        borderTop: '1px solid #e2e8f0',
-                        marginTop: '0.75rem',
-                        paddingTop: '0.75rem',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '0.4rem'
-                      }}
-                    >
-                      {resposta.respostas.map((r, index) => (
-                        <div key={index}>
-                          <div
-                            style={{
-                              fontSize: '0.8rem',
-                              fontWeight: 600,
-                              color: '#475569'
-                            }}
-                          >
-                            {r.pergunta}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: '0.9rem',
-                              color: '#0f172a'
-                            }}
-                          >
-                            {r.resposta}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </DashboardLayout>

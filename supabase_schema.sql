@@ -120,6 +120,10 @@ alter table public.envelopes add column if not exists titulo text;
 alter table public.envelopes add column if not exists status text default 'aguardando';
 alter table public.envelopes add column if not exists prazo timestamptz;
 alter table public.envelopes add column if not exists criado_em timestamptz default now();
+alter table public.envelopes add column if not exists mensagem text;
+alter table public.envelopes add column if not exists nome_arquivo text;
+alter table public.envelopes add column if not exists storage_path text;     -- PDF original
+alter table public.envelopes add column if not exists storage_final text;    -- PDF assinado por todos
 
 -- ------------------------------------------------------------
 -- ASSINATURAS (cada assinatura individual de um envelope)
@@ -147,6 +151,8 @@ alter table public.assinaturas add column if not exists status text default 'pen
 alter table public.assinaturas add column if not exists assinado_em timestamptz;
 alter table public.assinaturas add column if not exists ip_assinatura text;
 alter table public.assinaturas add column if not exists criado_em timestamptz default now();
+alter table public.assinaturas add column if not exists fonte text;          -- estilo da assinatura digitada
+alter table public.assinaturas add column if not exists img_path text;       -- desenho da assinatura no storage
 create index if not exists idx_assinaturas_token on public.assinaturas (token);
 
 -- ------------------------------------------------------------

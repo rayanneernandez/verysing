@@ -18,6 +18,7 @@ import MeusFormularios from './pages/MeusFormularios.tsx';
 import Pagamento from './pages/Pagamento.tsx';
 import Orcamentos from './pages/Orcamentos.tsx';
 import Admin from './pages/Admin.tsx';
+import AssinaturaPublica from './pages/AssinaturaPublica.tsx';
 import './App.css';
 
 function App() {
@@ -38,6 +39,7 @@ function App() {
         <Route path="/historico-comunicados" element={<HistoricoComunicados />} />
         <Route path="/orcamentos" element={<Orcamentos />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/assinatura/:token" element={<AssinaturaPublica />} />
         <Route path="/assinar" element={<Home />} />
         <Route path="/enviar" element={<EnviarDocumento />} />
         <Route path="/pagamento" element={<Pagamento />} />

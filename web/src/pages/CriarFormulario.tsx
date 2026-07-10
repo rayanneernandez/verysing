@@ -194,6 +194,8 @@ const SuccessModal = ({ isOpen, onClose, recipient, t }: any) => {
   );
 };
 
+const CONTATOS_SALVOS_KEY = 'verysing_contatos_formularios';
+
 function CriarFormulario() {
   const navigate = useNavigate();
   const { t, language } = useLanguage();
@@ -203,6 +205,53 @@ function CriarFormulario() {
   const [showPreview, setShowPreview] = useState(false);
   const [showFormResponse, setShowFormResponse] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+  // Modal de envio com contatos salvos
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [emailsInput, setEmailsInput] = useState('');
+  const [salvarContatos, setSalvarContatos] = useState(true);
+  const [contatosSalvos, setContatosSalvos] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(CONTATOS_SALVOS_KEY) || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  const adicionarContato = (email: string) => {
+    const atuais = emailsInput.split(/[,;\s]+/).filter(Boolean);
+    if (!atuais.includes(email)) {
+      setEmailsInput(atuais.length > 0 ? `${atuais.join(', ')}, ${email}` : email);
+    }
+  };
+
+  const removerContatoSalvo = (email: string) => {
+    const novos = contatosSalvos.filter(c => c !== email);
+    setContatosSalvos(novos);
+    localStorage.setItem(CONTATOS_SALVOS_KEY, JSON.stringify(novos));
+  };
+
+  const confirmarEnvio = () => {
+    const emails = emailsInput
+      .split(/[,;\s]+/)
+      .map(e => e.trim())
+      .filter(e => e.includes('@'));
+
+    if (emails.length === 0) {
+      alert('Informe ao menos um e-mail válido.');
+      return;
+    }
+
+    if (salvarContatos) {
+      const novos = Array.from(new Set([...contatosSalvos, ...emails]));
+      setContatosSalvos(novos);
+      localStorage.setItem(CONTATOS_SALVOS_KEY, JSON.stringify(novos));
+    }
+
+    setRecipientEmail(emails.join(', '));
+    setShowSendModal(false);
+    setShowSuccessModal(true);
+  };
 
   // Update defaults when language changes
   useEffect(() => {
@@ -299,13 +348,13 @@ function CriarFormulario() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formTitle || !recipientEmail || fields.length === 0) {
+    if (!formTitle || fields.length === 0) {
       alert(t('forms.alert_fill'));
       return;
     }
-    
-    // Simulação de envio
-    setShowSuccessModal(true);
+    // Abre o modal para escolher os destinatários
+    setEmailsInput('');
+    setShowSendModal(true);
   };
 
   const handleCloseSuccess = () => {
@@ -337,17 +386,9 @@ function CriarFormulario() {
                 />
               </div>
 
-              <div className="input-group">
-                <label className="input-label" style={{ display: 'block', color: '#334155', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>{t('forms.recipient_email_label')}</label>
-                <input 
-                  type="email" 
-                  value={recipientEmail}
-                  onChange={(e) => setRecipientEmail(e.target.value)}
-                  className="modern-input"
-                  placeholder={t('forms.recipient_email_placeholder')}
-                  style={{ width: '100%', padding: '0.75rem', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#0f172a', fontSize: '1rem' }}
-                />
-              </div>
+              <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: 0 }}>
+                Os destinatários serão escolhidos na hora do envio — com opção de salvar a lista para os próximos formulários.
+              </p>
             </div>
 
             {/* Builder de Campos */}
@@ -578,12 +619,72 @@ function CriarFormulario() {
           t={t}
         />
         
-        <SuccessModal 
-          isOpen={showSuccessModal} 
-          onClose={handleCloseSuccess} 
-          recipient={recipientEmail} 
-          t={t} 
+        <SuccessModal
+          isOpen={showSuccessModal}
+          onClose={handleCloseSuccess}
+          recipient={recipientEmail}
+          t={t}
         />
+
+        {/* Modal de destinatários do envio */}
+        <Modal isOpen={showSendModal} onClose={() => setShowSendModal(false)}>
+          <div style={{ marginBottom: '1.25rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#0f172a' }}>Para quem enviar?</h3>
+            <button onClick={() => setShowSendModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+
+          <label style={{ display: 'block', color: '#334155', marginBottom: '0.4rem', fontWeight: 500, fontSize: '0.9rem' }}>
+            E-mails dos destinatários (separados por vírgula)
+          </label>
+          <textarea
+            value={emailsInput}
+            onChange={e => setEmailsInput(e.target.value)}
+            rows={3}
+            placeholder="cliente1@empresa.com, cliente2@empresa.com"
+            style={{ width: '100%', padding: '0.75rem', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.95rem', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
+          />
+
+          {contatosSalvos.length > 0 && (
+            <div style={{ marginTop: '1rem' }}>
+              <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '0.5rem', fontWeight: 500 }}>
+                Contatos salvos (clique para adicionar):
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                {contatosSalvos.map(email => (
+                  <span
+                    key={email}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', background: '#eff6ff', color: '#2563eb', padding: '0.3rem 0.7rem', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer', border: '1px solid #dbeafe' }}
+                    onClick={() => adicionarContato(email)}
+                    title="Clique para adicionar aos destinatários"
+                  >
+                    {email}
+                    <span
+                      onClick={e => { e.stopPropagation(); removerContatoSalvo(email); }}
+                      title="Remover dos contatos salvos"
+                      style={{ color: '#94a3b8', fontWeight: 700, padding: '0 0.1rem' }}
+                    >
+                      ×
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.85rem', color: '#475569', margin: '1.25rem 0', cursor: 'pointer' }}>
+            <input type="checkbox" checked={salvarContatos} onChange={e => setSalvarContatos(e.target.checked)} />
+            Salvar estes e-mails para os próximos envios
+          </label>
+
+          <button
+            onClick={confirmarEnvio}
+            style={{ width: '100%', background: '#2563eb', color: 'white', border: 'none', padding: '0.85rem', borderRadius: '8px', fontWeight: 600, fontSize: '1rem', cursor: 'pointer' }}
+          >
+            Enviar formulário
+          </button>
+        </Modal>
       </div>
     </DashboardLayout>
   );
