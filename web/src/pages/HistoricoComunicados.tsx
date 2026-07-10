@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { useLanguage } from '../contexts/LanguageContext';
+import { BloqueioUpgrade } from './EnviarComunicado';
 import axios from 'axios';
 import '../App.css';
 import './HistoricoComunicados.css';
@@ -31,6 +32,7 @@ const formatarData = (iso?: string) => {
 function HistoricoComunicados() {
   const { t } = useLanguage();
   const API_URL = import.meta.env.VITE_API_URL || '';
+  const userPlan = localStorage.getItem('userPlan') || 'gratuito';
   const [comunicados, setComunicados] = useState<Comunicado[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [comunicadoSelecionadoId, setComunicadoSelecionadoId] = useState<string | null>(null);
@@ -73,6 +75,14 @@ function HistoricoComunicados() {
     const percentual = (comunicado.totalAberturas / comunicado.totalDestinatarios) * 100;
     return `${percentual.toFixed(0)}%`;
   };
+
+  if (userPlan === 'gratuito') {
+    return (
+      <DashboardLayout title={t('history.title')}>
+        <BloqueioUpgrade recurso="Histórico de comunicados" />
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout title={t('announce.preview_title')}>

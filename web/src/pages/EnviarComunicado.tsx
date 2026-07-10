@@ -6,10 +6,39 @@ import { useLanguage } from '../contexts/LanguageContext';
 import axios from 'axios';
 import '../App.css';
 
+export function BloqueioUpgrade({ recurso }: { recurso: string }) {
+  const navigate = useNavigate();
+  return (
+    <div style={{ maxWidth: '560px', margin: '4rem auto', textAlign: 'center', background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '3rem 2rem' }}>
+      <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🔒</div>
+      <h2 style={{ color: '#0f172a', fontSize: '1.4rem', marginBottom: '0.75rem' }}>
+        {recurso} é um recurso dos planos pagos
+      </h2>
+      <p style={{ color: '#64748b', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '2rem' }}>
+        Disponível a partir do plano <strong>Profissional</strong> (R$ 19,90/mês): envie até 10
+        comunicados/mês para 2.000 e-mails, com rastreio de abertura. No plano
+        <strong> Empresarial</strong>, 50 comunicados e 25.000 e-mails/mês.
+      </p>
+      <button
+        onClick={() => navigate('/pagamento', { state: { plano: 'profissional' } })}
+        style={{ background: '#2563eb', color: 'white', border: 'none', padding: '0.9rem 2.5rem', borderRadius: '10px', fontWeight: 700, fontSize: '1rem', cursor: 'pointer', boxShadow: '0 6px 16px rgba(37,99,235,0.35)' }}
+      >
+        Fazer upgrade agora
+      </button>
+      <div>
+        <button onClick={() => navigate('/app')} style={{ background: 'none', border: 'none', color: '#94a3b8', marginTop: '1rem', cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}>
+          Voltar ao painel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function EnviarComunicado() {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const API_URL = import.meta.env.VITE_API_URL || '';
+  const userPlan = localStorage.getItem('userPlan') || 'gratuito';
   const [logo, setLogo] = useState<string | null>(null);
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
@@ -116,6 +145,14 @@ export default function EnviarComunicado() {
       setSending(false);
     }
   };
+
+  if (userPlan === 'gratuito') {
+    return (
+      <DashboardLayout title={t('announce.title')}>
+        <BloqueioUpgrade recurso="Enviar comunicados" />
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout title={t('announce.title')}>

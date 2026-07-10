@@ -822,6 +822,26 @@ def inicio_mes_iso() -> str:
     return agora.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
 
 
+def contratos_usados_no_mes(db, email: str) -> int:
+    """Contratos gerados por modelo + envelopes enviados no mês corrente."""
+    inicio = inicio_mes_iso()
+    contratos = db.table("contratos").select("id", count="exact").eq("email", email).gte("criado_em", inicio).execute()
+    envelopes = db.table("envelopes").select("id", count="exact").eq("email_usuario", email).gte("criado_em", inicio).execute()
+    return (contratos.count or 0) + (envelopes.count or 0)
+
+
+def exigir_limite_contratos(db, usuario: dict):
+    """Bloqueia se o plano já atingiu o limite de contratos/envelopes no mês."""
+    plano = PLANOS.get(usuario.get("tipo_plano", "gratuito"), PLANOS["gratuito"])
+    if plano["contratos_mes"] is not None:
+        usados = contratos_usados_no_mes(db, usuario["email"])
+        if usados >= plano["contratos_mes"]:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Você atingiu o limite de {plano['contratos_mes']} contratos/envelopes por mês do plano {plano['nome']}. Faça upgrade para continuar."
+            )
+
+
 def exigir_admin(email_admin: str):
     usuario = obter_usuario(email_admin)
     if usuario.get("tipo_plano") != "admin":
@@ -854,7 +874,6 @@ async def uso_do_plano(email: str):
     inicio_mes = inicio_mes_iso()
 
     docs = db.table("documentos").select("id", count="exact").eq("email_usuario", email).execute()
-    contratos = db.table("contratos").select("id", count="exact").eq("email", email).gte("criado_em", inicio_mes).execute()
     comunicados = db.table("comunicacoes").select("destinatarios").eq("email_usuario", email).eq("status", "enviado").gte("criado_em", inicio_mes).execute()
 
     total_comunicados = len(comunicados.data)
@@ -864,7 +883,7 @@ async def uso_do_plano(email: str):
         "plano": plano,
         "uso": {
             "docs_drive": docs.count or 0,
-            "contratos_mes": contratos.count or 0,
+            "contratos_mes": contratos_usados_no_mes(db, email),
             "comunicados_mes": total_comunicados,
             "emails_mes": total_emails,
         },
@@ -1118,13 +1137,8 @@ class ContratoGerado(BaseModel):
 @app.post("/api/contratos/gerar")
 async def registrar_contrato_gerado(dados: ContratoGerado):
     db = verificar_supabase()
-    plano = plano_do_usuario(dados.email_usuario)
-    inicio_mes = inicio_mes_iso()
-
-    if plano["contratos_mes"] is not None:
-        usados = db.table("contratos").select("id", count="exact").eq("email", dados.email_usuario).gte("criado_em", inicio_mes).execute()
-        if (usados.count or 0) >= plano["contratos_mes"]:
-            raise HTTPException(status_code=403, detail=f"Limite de {plano['contratos_mes']} contratos/mês do seu plano atingido. Faça upgrade para continuar.")
+    usuario = obter_usuario(dados.email_usuario)
+    exigir_limite_contratos(db, usuario)
 
     res = db.table("contratos").insert({
         "email": dados.email_usuario,
@@ -1553,6 +1567,7 @@ async def criar_envelope(
 ):
     db = verificar_supabase()
     usuario = obter_usuario(email_usuario)
+    exigir_limite_contratos(db, usuario)
     remetente = credenciais_envio(usuario)
 
     try:
