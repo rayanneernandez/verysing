@@ -51,6 +51,24 @@ else:
 
 app = FastAPI()
 
+
+@app.get("/api/health")
+async def health():
+    """Diagnóstico de configuração (mostra só os NOMES das variáveis, nunca os valores)."""
+    nomes_relevantes = sorted(
+        k for k in os.environ
+        if any(p in k.upper() for p in ("SUPABASE", "SUPA", "PABASE", "GMAIL", "PIX", "PRIVATE_KEY"))
+    )
+    return {
+        "supabase_url_definida": bool(os.getenv("SUPABASE_URL")),
+        "supabase_key_definida": bool(os.getenv("SUPABASE_KEY")),
+        "supabase_conectado": supabase is not None,
+        "gmail_configurado": bool(os.getenv("GMAIL_USER") and os.getenv("GMAIL_APP_PASSWORD")),
+        "pix_configurado": bool(os.getenv("PIX_CHAVE")),
+        "variaveis_encontradas": nomes_relevantes,
+    }
+
+
 # Função auxiliar para verificar conexão
 def verificar_supabase():
     if not supabase:
