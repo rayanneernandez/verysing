@@ -15,10 +15,6 @@ function Landing() {
     navigate('/login');
   };
 
-  const irParaAssinatura = () => {
-    navigate('/assinar');
-  };
-
   const irParaPagamento = (plano: 'gratuito' | 'profissional' | 'empresarial') => {
     navigate('/pagamento', { state: { plano } });
   };

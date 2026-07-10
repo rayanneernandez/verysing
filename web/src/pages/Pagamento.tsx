@@ -62,7 +62,7 @@ function Pagamento() {
   const [expiry, setExpiry] = useState('');
   const [cvv, setCvv] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'cartao' | 'boleto' | 'pix'>('cartao');
+  const [paymentMethod, setPaymentMethod] = useState<'cartao' | 'boleto' | 'pix'>('pix');
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
   const [alertType, setAlertType] = useState<'error' | 'success'>('error');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -161,12 +161,13 @@ function Pagamento() {
     setIsProcessing(true);
 
     try {
+      const emailConta = email || localStorage.getItem('userEmail') || undefined;
       const response = await axios.post(`${API_URL}/api/pagamento/confirmar`, {
         txid: pixData.txid,
         nome: userName,
-        cpf: userCpf,
+        cpf: userCpf.replace(/\D/g, ''),
         plano: selectedPlan,
-        email: email
+        email: emailConta
       });
 
       setContratoUrl(`${API_URL}/download/${response.data.contrato_arquivo}`);
@@ -606,10 +607,11 @@ function Pagamento() {
                       backgroundSize: '1.2em 1.2em'
                     }}
                   >
-                    <option value="cartao">{t('payment.method_card')}</option>
-                    <option value="boleto">{t('payment.method_boleto')}</option>
                     <option value="pix">{t('payment.method_pix')}</option>
                   </select>
+                  <p style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.4rem' }}>
+                    Cartão de crédito em breve. Por enquanto, o pagamento é via PIX.
+                  </p>
                 </div>
 
                 {alertMessage && (
@@ -1191,7 +1193,7 @@ function Pagamento() {
             </div>
 
             <div style={{ marginTop: '1.3rem', fontSize: '0.75rem', color: '#9ca3af', opacity: 0.9 }}>
-              Esta é uma simulação de tela de pagamento, sem cobrança real.
+              O pagamento é feito diretamente via PIX. Após pagar, clique em "Já fiz o pagamento" para ativar o plano.
             </div>
           </div>
         </div>

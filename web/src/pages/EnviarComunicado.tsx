@@ -1,18 +1,67 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 // Page component for sending email announcements
 import { DashboardLayout } from '../components/DashboardLayout';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
+import axios from 'axios';
 import '../App.css';
 
 export default function EnviarComunicado() {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const API_URL = import.meta.env.VITE_API_URL || '';
   const [logo, setLogo] = useState<string | null>(null);
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [recipients, setRecipients] = useState('');
+  const [sending, setSending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Configuração do remetente (Gmail do próprio usuário)
+  const [userId, setUserId] = useState<string | null>(null);
+  const [remetenteConfigurado, setRemetenteConfigurado] = useState<boolean | null>(null);
+  const [remetenteEmail, setRemetenteEmail] = useState('');
+  const [remetenteSenha, setRemetenteSenha] = useState('');
+  const [mostrarConfigRemetente, setMostrarConfigRemetente] = useState(false);
+  const [salvandoRemetente, setSalvandoRemetente] = useState(false);
+
+  useEffect(() => {
+    const emailUsuario = localStorage.getItem('userEmail');
+    if (!emailUsuario) return;
+    axios
+      .get(`${API_URL}/api/usuarios/config-envio`, { params: { email: emailUsuario } })
+      .then(r => {
+        setUserId(r.data.id);
+        setRemetenteConfigurado(r.data.configurado);
+        if (r.data.smtp_email) setRemetenteEmail(r.data.smtp_email);
+        // Se nem o usuário nem o sistema têm remetente, abre a configuração
+        if (!r.data.configurado && !r.data.remetente_sistema) setMostrarConfigRemetente(true);
+      })
+      .catch(() => {});
+  }, []);
+
+  const salvarRemetente = async () => {
+    if (!userId || !remetenteEmail || !remetenteSenha) {
+      alert('Preencha o Gmail e a senha de app.');
+      return;
+    }
+    setSalvandoRemetente(true);
+    try {
+      await axios.put(`${API_URL}/api/usuarios/${userId}`, {
+        smtp_email: remetenteEmail.trim(),
+        smtp_senha: remetenteSenha.trim(),
+      });
+      setRemetenteConfigurado(true);
+      setMostrarConfigRemetente(false);
+      setRemetenteSenha('');
+      alert('Remetente configurado! Seus comunicados sairão do seu próprio e-mail.');
+    } catch (err: any) {
+      const detalhe = err.response?.data?.detail;
+      alert(typeof detalhe === 'string' ? detalhe : 'Erro ao salvar remetente.');
+    } finally {
+      setSalvandoRemetente(false);
+    }
+  };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -25,15 +74,47 @@ export default function EnviarComunicado() {
     }
   };
 
-  const handleSend = (e: React.FormEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!subject || !message || !recipients) {
-      alert(t('forms.alert_fill')); 
+      alert(t('forms.alert_fill'));
       return;
     }
-    // Simulation
-    alert(t('announce.success'));
-    navigate('/app');
+
+    const emailUsuario = localStorage.getItem('userEmail');
+    if (!emailUsuario) {
+      alert('Sessão expirada. Faça login novamente.');
+      navigate('/login');
+      return;
+    }
+
+    const listaDestinatarios = recipients
+      .split(/[,;\s]+/)
+      .map(r => r.trim())
+      .filter(r => r.includes('@'));
+
+    if (listaDestinatarios.length === 0) {
+      alert('Informe ao menos um e-mail de destinatário válido.');
+      return;
+    }
+
+    setSending(true);
+    try {
+      const response = await axios.post(`${API_URL}/api/comunicados`, {
+        email_usuario: emailUsuario,
+        assunto: subject,
+        mensagem: message,
+        destinatarios: listaDestinatarios,
+        logo_base64: logo,
+      });
+      alert(response.data.mensagem || t('announce.success'));
+      navigate('/historico-comunicados');
+    } catch (err: any) {
+      const detalhe = err.response?.data?.detail;
+      alert(typeof detalhe === 'string' ? detalhe : 'Erro ao enviar comunicado. Tente novamente.');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -43,6 +124,65 @@ export default function EnviarComunicado() {
         <div style={{ marginBottom: '2rem' }}>
           <h2 style={{ color: '#0f172a', marginBottom: '0.5rem', fontSize: '1.5rem', fontWeight: '600' }}>{t('announce.title')}</h2>
           <p style={{ color: '#64748b', fontSize: '0.95rem' }}>{t('announce.subtitle')}</p>
+        </div>
+
+        {/* Configuração do remetente */}
+        <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1rem 1.5rem', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div style={{ fontSize: '0.9rem', color: '#334155' }}>
+              <strong>Remetente: </strong>
+              {remetenteConfigurado
+                ? <span style={{ color: '#16a34a' }}>seus e-mails saem de <strong>{remetenteEmail}</strong> ✓</span>
+                : <span style={{ color: '#d97706' }}>usando o e-mail padrão do sistema (as respostas chegam no seu e-mail)</span>}
+            </div>
+            <button
+              type="button"
+              onClick={() => setMostrarConfigRemetente(!mostrarConfigRemetente)}
+              style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#475569', padding: '0.45rem 1rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
+            >
+              {mostrarConfigRemetente ? 'Fechar' : remetenteConfigurado ? 'Alterar' : 'Usar meu próprio e-mail'}
+            </button>
+          </div>
+
+          {mostrarConfigRemetente && (
+            <div style={{ marginTop: '1rem', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
+              <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '0.75rem', lineHeight: 1.5 }}>
+                Para os comunicados saírem do <strong>seu</strong> Gmail: ative a verificação em 2 etapas na sua conta Google,
+                gere uma <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb' }}>senha de app</a> e
+                cole abaixo. A senha fica guardada só para envio dos seus e-mails.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem', alignItems: 'end' }}>
+                <div>
+                  <label style={{ display: 'block', color: '#334155', marginBottom: '0.35rem', fontWeight: 500, fontSize: '0.85rem' }}>Seu Gmail</label>
+                  <input
+                    type="email"
+                    value={remetenteEmail}
+                    onChange={e => setRemetenteEmail(e.target.value)}
+                    placeholder="voce@gmail.com"
+                    style={{ width: '100%', padding: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#334155', marginBottom: '0.35rem', fontWeight: 500, fontSize: '0.85rem' }}>Senha de app (16 letras)</label>
+                  <input
+                    type="password"
+                    value={remetenteSenha}
+                    onChange={e => setRemetenteSenha(e.target.value)}
+                    placeholder="xxxx xxxx xxxx xxxx"
+                    style={{ width: '100%', padding: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem' }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={salvarRemetente}
+                  disabled={salvandoRemetente}
+                  style={{ background: '#2563eb', color: 'white', border: 'none', padding: '0.65rem 1.25rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', opacity: salvandoRemetente ? 0.7 : 1 }}
+                >
+                  {salvandoRemetente ? 'Salvando...' : 'Salvar remetente'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="split-layout">
@@ -124,11 +264,13 @@ export default function EnviarComunicado() {
                 />
               </div>
 
-              <button 
+              <button
                 type="submit"
-                style={{ 
+                disabled={sending}
+                style={{
                   width: '100%',
-                  background: '#10b981', 
+                  opacity: sending ? 0.7 : 1,
+                  background: '#10b981',
                   color: 'white', 
                   padding: '0.9rem', 
                   borderRadius: '6px', 
@@ -144,7 +286,7 @@ export default function EnviarComunicado() {
                 }}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                {t('announce.send_btn')}
+                {sending ? 'Enviando...' : t('announce.send_btn')}
               </button>
             </form>
           </div>

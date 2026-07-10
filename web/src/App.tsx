@@ -16,6 +16,8 @@ import HistoricoComunicados from './pages/HistoricoComunicados.tsx';
 import ModelosContrato from './pages/ModelosContrato';
 import MeusFormularios from './pages/MeusFormularios.tsx';
 import Pagamento from './pages/Pagamento.tsx';
+import Orcamentos from './pages/Orcamentos.tsx';
+import Admin from './pages/Admin.tsx';
 import './App.css';
 
 function App() {
@@ -34,6 +36,8 @@ function App() {
         <Route path="/modelos" element={<ModelosContrato />} />
         <Route path="/enviar-comunicado" element={<EnviarComunicado />} />
         <Route path="/historico-comunicados" element={<HistoricoComunicados />} />
+        <Route path="/orcamentos" element={<Orcamentos />} />
+        <Route path="/admin" element={<Admin />} />
         <Route path="/assinar" element={<Home />} />
         <Route path="/enviar" element={<EnviarDocumento />} />
         <Route path="/pagamento" element={<Pagamento />} />

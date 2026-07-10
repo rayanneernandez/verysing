@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import logoPng from '../assets/logo.png';
 
 
@@ -16,9 +17,35 @@ interface Template {
 const ModelosContrato: React.FC = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
+  const API_URL = import.meta.env.VITE_API_URL || '';
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [docHash, setDocHash] = useState<string>('');
+  const [contratoRegistrado, setContratoRegistrado] = useState(false);
+
+  // Registra o contrato gerado no backend e valida o limite mensal do plano.
+  // Retorna false (e avisa o usuário) se o limite foi atingido.
+  const registrarContrato = async (): Promise<boolean> => {
+    if (contratoRegistrado || !selectedTemplate) return true;
+    const emailUsuario = localStorage.getItem('userEmail');
+    if (!emailUsuario) return true; // sem sessão, não bloqueia (fluxo antigo)
+    try {
+      await axios.post(`${API_URL}/api/contratos/gerar`, {
+        email_usuario: emailUsuario,
+        titulo: selectedTemplate.title,
+        modelo_id: selectedTemplate.id,
+      });
+      setContratoRegistrado(true);
+      return true;
+    } catch (err: any) {
+      const detalhe = err.response?.data?.detail;
+      if (err.response?.status === 403) {
+        alert(typeof detalhe === 'string' ? detalhe : 'Limite de contratos do seu plano atingido.');
+        return false;
+      }
+      return true; // erro de rede/servidor não bloqueia a geração local
+    }
+  };
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -518,15 +545,333 @@ const ModelosContrato: React.FC = () => {
         </div>
       `)
     },
+    {
+      id: 'compra_venda_imovel',
+      title: 'Compra e Venda de Imóvel',
+      description: 'Promessa de compra e venda de imóvel com condições de pagamento.',
+      fields: [
+        { key: 'vendedor', label: 'Nome do Vendedor (Promitente)', type: 'text' },
+        { key: 'doc_vendedor', label: 'CPF/CNPJ do Vendedor', type: 'text' },
+        { key: 'comprador', label: 'Nome do Comprador (Promissário)', type: 'text' },
+        { key: 'doc_comprador', label: 'CPF/CNPJ do Comprador', type: 'text' },
+        { key: 'imovel', label: 'Descrição e Endereço do Imóvel', type: 'textarea' },
+        { key: 'matricula', label: 'Matrícula do Imóvel (Cartório)', type: 'text' },
+        { key: 'valor', label: 'Valor Total (R$)', type: 'text' },
+        { key: 'sinal', label: 'Valor do Sinal/Entrada (R$)', type: 'text' },
+        { key: 'forma_pagamento', label: 'Forma de Pagamento do Restante', type: 'text' },
+        { key: 'cidade', label: 'Cidade', type: 'text' },
+      ],
+      content: (data) => wrapContractLayout(`
+        <div>
+          <h2 style="text-align: center;">PROMESSA DE COMPRA E VENDA DE IMÓVEL</h2>
+
+          <p><strong>PROMITENTE VENDEDOR:</strong> ${data.vendedor || '____________________'}, CPF/CNPJ ${data.doc_vendedor || '____________________'}.</p>
+          <p><strong>PROMISSÁRIO COMPRADOR:</strong> ${data.comprador || '____________________'}, CPF/CNPJ ${data.doc_comprador || '____________________'}.</p>
+
+          <h3>CLÁUSULA 1ª - DO OBJETO</h3>
+          <p>O presente contrato tem por objeto o imóvel assim descrito: ${data.imovel || '________________________________________'}, registrado sob a matrícula nº ${data.matricula || '__________'}.</p>
+
+          <h3>CLÁUSULA 2ª - DO PREÇO E PAGAMENTO</h3>
+          <p>O preço certo e ajustado é de <strong>R$ ${data.valor || '___,00'}</strong>, sendo <strong>R$ ${data.sinal || '___,00'}</strong> pagos a título de sinal e princípio de pagamento, e o restante da seguinte forma: ${data.forma_pagamento || '____________________'}.</p>
+
+          <h3>CLÁUSULA 3ª - DA ESCRITURA</h3>
+          <p>A escritura definitiva será outorgada após a quitação integral do preço, correndo as despesas de transferência (ITBI, escritura e registro) por conta do COMPRADOR.</p>
+
+          <h3>CLÁUSULA 4ª - DA POSSE</h3>
+          <p>O COMPRADOR será imitido na posse do imóvel após o pagamento do sinal, respondendo a partir de então por todos os tributos e encargos incidentes.</p>
+
+          <h3>CLÁUSULA 5ª - DO ARREPENDIMENTO</h3>
+          <p>Em caso de desistência pelo COMPRADOR, este perderá o sinal pago. Em caso de desistência pelo VENDEDOR, este devolverá o sinal em dobro (art. 418 do Código Civil).</p>
+
+          <br/>
+          <p style="text-align: center;">${data.cidade || '___________'}, ${new Date().toLocaleDateString()}</p>
+          <br/><br/>
+
+          <div style="display: flex; justify-content: space-between; margin-top: 40px; gap: 20px;">
+            ${renderSignature(data.vendedor, 'PROMITENTE VENDEDOR', 'Assinatura', '{{SIGNATURE_VENDEDOR}}')}
+            ${renderSignature(data.comprador, 'PROMISSÁRIO COMPRADOR', 'Assinatura', '{{SIGNATURE_COMPRADOR}}')}
+          </div>
+        </div>
+      `)
+    },
+    {
+      id: 'emprestimo',
+      title: 'Empréstimo entre Particulares',
+      description: 'Contrato de mútuo (empréstimo de dinheiro) com confissão de dívida.',
+      fields: [
+        { key: 'credor', label: 'Nome do Credor (Quem empresta)', type: 'text' },
+        { key: 'doc_credor', label: 'CPF do Credor', type: 'text' },
+        { key: 'devedor', label: 'Nome do Devedor (Quem recebe)', type: 'text' },
+        { key: 'doc_devedor', label: 'CPF do Devedor', type: 'text' },
+        { key: 'valor', label: 'Valor Emprestado (R$)', type: 'text' },
+        { key: 'parcelas', label: 'Número de Parcelas', type: 'number' },
+        { key: 'valor_parcela', label: 'Valor de Cada Parcela (R$)', type: 'text' },
+        { key: 'primeiro_vencimento', label: 'Data do Primeiro Vencimento', type: 'date' },
+        { key: 'cidade', label: 'Cidade', type: 'text' },
+      ],
+      content: (data) => wrapContractLayout(`
+        <div>
+          <h2 style="text-align: center;">CONTRATO DE MÚTUO (EMPRÉSTIMO)</h2>
+
+          <p><strong>MUTUANTE (CREDOR):</strong> ${data.credor || '____________________'}, CPF ${data.doc_credor || '____________________'}.</p>
+          <p><strong>MUTUÁRIO (DEVEDOR):</strong> ${data.devedor || '____________________'}, CPF ${data.doc_devedor || '____________________'}.</p>
+
+          <h3>1. DO OBJETO</h3>
+          <p>O MUTUANTE empresta ao MUTUÁRIO, neste ato, a quantia de <strong>R$ ${data.valor || '___,00'}</strong>, cujo recebimento o MUTUÁRIO confirma e dá plena quitação pela presente via.</p>
+
+          <h3>2. DO PAGAMENTO</h3>
+          <p>O MUTUÁRIO restituirá o valor em ${data.parcelas || '___'} parcelas de <strong>R$ ${data.valor_parcela || '___,00'}</strong>, vencendo-se a primeira em ${data.primeiro_vencimento ? new Date(data.primeiro_vencimento).toLocaleDateString() : '__/__/____'} e as demais no mesmo dia dos meses subsequentes.</p>
+
+          <h3>3. DO ATRASO</h3>
+          <p>Em caso de inadimplemento, incidirá multa de 2% sobre o valor da parcela, juros de mora de 1% ao mês e correção monetária, vencendo-se antecipadamente as demais parcelas.</p>
+
+          <h3>4. DO TÍTULO EXECUTIVO</h3>
+          <p>Este contrato, assinado pelas partes e por duas testemunhas, constitui título executivo extrajudicial nos termos do art. 784, III, do CPC.</p>
+
+          <br/>
+          <p style="text-align: center;">${data.cidade || '___________'}, ${new Date().toLocaleDateString()}</p>
+          <br/><br/>
+
+          <div style="display: flex; justify-content: space-between; margin-top: 40px; gap: 20px;">
+            ${renderSignature(data.credor, 'MUTUANTE', 'Assinatura do Credor', '{{SIGNATURE_CREDOR}}')}
+            ${renderSignature(data.devedor, 'MUTUÁRIO', 'Assinatura do Devedor', '{{SIGNATURE_DEVEDOR}}')}
+          </div>
+        </div>
+      `)
+    },
+    {
+      id: 'consultoria',
+      title: 'Consultoria Empresarial',
+      description: 'Contrato para serviços de consultoria e assessoria especializada.',
+      fields: [
+        { key: 'consultor', label: 'Nome do Consultor/Empresa', type: 'text' },
+        { key: 'doc_consultor', label: 'CPF/CNPJ do Consultor', type: 'text' },
+        { key: 'cliente', label: 'Nome do Cliente', type: 'text' },
+        { key: 'doc_cliente', label: 'CPF/CNPJ do Cliente', type: 'text' },
+        { key: 'escopo', label: 'Escopo da Consultoria', type: 'textarea' },
+        { key: 'valor', label: 'Honorários (R$)', type: 'text' },
+        { key: 'periodicidade', label: 'Periodicidade (mensal, por projeto...)', type: 'text' },
+        { key: 'vigencia', label: 'Vigência do Contrato', type: 'text' },
+        { key: 'cidade', label: 'Cidade', type: 'text' },
+      ],
+      content: (data) => wrapContractLayout(`
+        <div>
+          <h2 style="text-align: center;">CONTRATO DE CONSULTORIA EMPRESARIAL</h2>
+
+          <p><strong>CONSULTOR(A):</strong> ${data.consultor || '____________________'}, CPF/CNPJ ${data.doc_consultor || '____________________'}.</p>
+          <p><strong>CLIENTE:</strong> ${data.cliente || '____________________'}, CPF/CNPJ ${data.doc_cliente || '____________________'}.</p>
+
+          <h3>1. DO OBJETO</h3>
+          <p>Prestação de serviços de consultoria compreendendo: ${data.escopo || '________________________________________'}.</p>
+
+          <h3>2. DOS HONORÁRIOS</h3>
+          <p>Pelos serviços, o CLIENTE pagará honorários de <strong>R$ ${data.valor || '___,00'}</strong> (${data.periodicidade || 'mensais'}).</p>
+
+          <h3>3. DA VIGÊNCIA</h3>
+          <p>O presente contrato vigorará por ${data.vigencia || '____________________'}, podendo ser renovado por acordo entre as partes.</p>
+
+          <h3>4. DA CONFIDENCIALIDADE</h3>
+          <p>O CONSULTOR manterá sigilo absoluto sobre todas as informações do CLIENTE a que tiver acesso, obrigação que subsiste por 5 anos após o término do contrato.</p>
+
+          <h3>5. DA AUTONOMIA</h3>
+          <p>Os serviços serão prestados sem exclusividade, subordinação ou habitualidade, não configurando vínculo empregatício.</p>
+
+          <br/>
+          <p style="text-align: center;">${data.cidade || '___________'}, ${new Date().toLocaleDateString()}</p>
+          <br/><br/>
+
+          <div style="display: flex; justify-content: space-between; margin-top: 40px; gap: 20px;">
+            ${renderSignature(data.consultor, 'CONSULTOR(A)', 'Assinatura', '{{SIGNATURE_CONSULTOR}}')}
+            ${renderSignature(data.cliente, 'CLIENTE', 'Assinatura', '{{SIGNATURE_CLIENTE}}')}
+          </div>
+        </div>
+      `)
+    },
+    {
+      id: 'freelancer',
+      title: 'Freelancer / Trabalho Autônomo',
+      description: 'Contrato para projetos freelance (design, marketing, desenvolvimento, etc).',
+      fields: [
+        { key: 'freelancer', label: 'Nome do Freelancer', type: 'text' },
+        { key: 'doc_freelancer', label: 'CPF/CNPJ do Freelancer', type: 'text' },
+        { key: 'cliente', label: 'Nome do Cliente', type: 'text' },
+        { key: 'doc_cliente', label: 'CPF/CNPJ do Cliente', type: 'text' },
+        { key: 'projeto', label: 'Descrição do Projeto/Entregáveis', type: 'textarea' },
+        { key: 'valor', label: 'Valor do Projeto (R$)', type: 'text' },
+        { key: 'prazo_entrega', label: 'Prazo de Entrega', type: 'text' },
+        { key: 'revisoes', label: 'Número de Revisões Incluídas', type: 'number' },
+        { key: 'cidade', label: 'Cidade', type: 'text' },
+      ],
+      content: (data) => wrapContractLayout(`
+        <div>
+          <h2 style="text-align: center;">CONTRATO DE TRABALHO FREELANCE</h2>
+
+          <p><strong>CONTRATADO (FREELANCER):</strong> ${data.freelancer || '____________________'}, CPF/CNPJ ${data.doc_freelancer || '____________________'}.</p>
+          <p><strong>CONTRATANTE (CLIENTE):</strong> ${data.cliente || '____________________'}, CPF/CNPJ ${data.doc_cliente || '____________________'}.</p>
+
+          <h3>1. DO PROJETO</h3>
+          <p>O FREELANCER executará o seguinte projeto: ${data.projeto || '________________________________________'}.</p>
+
+          <h3>2. DO VALOR E PAGAMENTO</h3>
+          <p>O valor total do projeto é de <strong>R$ ${data.valor || '___,00'}</strong>, sendo 50% na assinatura deste contrato e 50% na entrega final.</p>
+
+          <h3>3. DO PRAZO E REVISÕES</h3>
+          <p>O prazo de entrega é de ${data.prazo_entrega || '____________'} a contar da assinatura e do recebimento de todos os materiais necessários. Estão incluídas ${data.revisoes || '2'} rodadas de revisão; revisões adicionais serão orçadas à parte.</p>
+
+          <h3>4. DOS DIREITOS AUTORAIS</h3>
+          <p>Após a quitação integral, os direitos patrimoniais sobre o material produzido serão transferidos ao CLIENTE, podendo o FREELANCER exibir o trabalho em seu portfólio.</p>
+
+          <h3>5. DO CANCELAMENTO</h3>
+          <p>Em caso de cancelamento pelo CLIENTE após o início dos trabalhos, o sinal pago não será restituído, e etapas concluídas serão cobradas proporcionalmente.</p>
+
+          <br/>
+          <p style="text-align: center;">${data.cidade || '___________'}, ${new Date().toLocaleDateString()}</p>
+          <br/><br/>
+
+          <div style="display: flex; justify-content: space-between; margin-top: 40px; gap: 20px;">
+            ${renderSignature(data.freelancer, 'FREELANCER', 'Assinatura', '{{SIGNATURE_FREELANCER}}')}
+            ${renderSignature(data.cliente, 'CLIENTE', 'Assinatura', '{{SIGNATURE_CLIENTE}}')}
+          </div>
+        </div>
+      `)
+    },
+    {
+      id: 'parceria',
+      title: 'Parceria Comercial',
+      description: 'Acordo de parceria entre empresas ou profissionais com divisão de resultados.',
+      fields: [
+        { key: 'parceiro_a', label: 'Parceiro A (Nome/Empresa)', type: 'text' },
+        { key: 'doc_a', label: 'CPF/CNPJ Parceiro A', type: 'text' },
+        { key: 'parceiro_b', label: 'Parceiro B (Nome/Empresa)', type: 'text' },
+        { key: 'doc_b', label: 'CPF/CNPJ Parceiro B', type: 'text' },
+        { key: 'objeto', label: 'Objeto da Parceria', type: 'textarea' },
+        { key: 'divisao', label: 'Divisão de Resultados (ex: 50%/50%)', type: 'text' },
+        { key: 'vigencia', label: 'Vigência', type: 'text' },
+        { key: 'cidade', label: 'Cidade', type: 'text' },
+      ],
+      content: (data) => wrapContractLayout(`
+        <div>
+          <h2 style="text-align: center;">CONTRATO DE PARCERIA COMERCIAL</h2>
+
+          <p><strong>PARCEIRO A:</strong> ${data.parceiro_a || '____________________'}, CPF/CNPJ ${data.doc_a || '____________________'}.</p>
+          <p><strong>PARCEIRO B:</strong> ${data.parceiro_b || '____________________'}, CPF/CNPJ ${data.doc_b || '____________________'}.</p>
+
+          <h3>1. DO OBJETO</h3>
+          <p>As partes estabelecem parceria comercial para: ${data.objeto || '________________________________________'}.</p>
+
+          <h3>2. DA DIVISÃO DE RESULTADOS</h3>
+          <p>Os resultados líquidos decorrentes da parceria serão divididos na proporção: ${data.divisao || '____________________'}.</p>
+
+          <h3>3. DAS OBRIGAÇÕES</h3>
+          <p>Cada parceiro arcará com seus próprios custos operacionais, salvo acordo escrito em contrário, e se compromete a atuar com boa-fé e transparência, prestando contas mensalmente.</p>
+
+          <h3>4. DA INDEPENDÊNCIA</h3>
+          <p>Esta parceria não constitui sociedade, franquia ou vínculo empregatício entre as partes, tampouco autoriza uma parte a assumir obrigações em nome da outra.</p>
+
+          <h3>5. DA VIGÊNCIA E RESCISÃO</h3>
+          <p>A parceria vigorará por ${data.vigencia || 'prazo indeterminado'}, podendo ser rescindida por qualquer parte mediante aviso prévio de 30 dias, respeitados os compromissos em andamento.</p>
+
+          <br/>
+          <p style="text-align: center;">${data.cidade || '___________'}, ${new Date().toLocaleDateString()}</p>
+          <br/><br/>
+
+          <div style="display: flex; justify-content: space-between; margin-top: 40px; gap: 20px;">
+            ${renderSignature(data.parceiro_a, 'PARCEIRO A', 'Assinatura', '{{SIGNATURE_PARCEIRO_A}}')}
+            ${renderSignature(data.parceiro_b, 'PARCEIRO B', 'Assinatura', '{{SIGNATURE_PARCEIRO_B}}')}
+          </div>
+        </div>
+      `)
+    },
+    {
+      id: 'comodato',
+      title: 'Comodato (Empréstimo de Bem)',
+      description: 'Empréstimo gratuito de bem móvel ou imóvel com devolução garantida.',
+      fields: [
+        { key: 'comodante', label: 'Comodante (Dono do bem)', type: 'text' },
+        { key: 'doc_comodante', label: 'CPF/CNPJ do Comodante', type: 'text' },
+        { key: 'comodatario', label: 'Comodatário (Quem usará)', type: 'text' },
+        { key: 'doc_comodatario', label: 'CPF/CNPJ do Comodatário', type: 'text' },
+        { key: 'bem', label: 'Descrição do Bem Emprestado', type: 'textarea' },
+        { key: 'prazo', label: 'Prazo do Comodato', type: 'text' },
+        { key: 'cidade', label: 'Cidade', type: 'text' },
+      ],
+      content: (data) => wrapContractLayout(`
+        <div>
+          <h2 style="text-align: center;">CONTRATO DE COMODATO</h2>
+
+          <p><strong>COMODANTE:</strong> ${data.comodante || '____________________'}, CPF/CNPJ ${data.doc_comodante || '____________________'}.</p>
+          <p><strong>COMODATÁRIO:</strong> ${data.comodatario || '____________________'}, CPF/CNPJ ${data.doc_comodatario || '____________________'}.</p>
+
+          <h3>1. DO OBJETO</h3>
+          <p>O COMODANTE empresta gratuitamente ao COMODATÁRIO o seguinte bem: ${data.bem || '________________________________________'}.</p>
+
+          <h3>2. DO PRAZO</h3>
+          <p>O comodato vigorará pelo prazo de ${data.prazo || '____________________'}, findo o qual o bem deverá ser restituído no estado em que foi recebido, ressalvado o desgaste natural.</p>
+
+          <h3>3. DAS OBRIGAÇÕES DO COMODATÁRIO</h3>
+          <p>O COMODATÁRIO se obriga a conservar o bem como se seu fosse, utilizá-lo exclusivamente para a finalidade a que se destina e arcar com as despesas ordinárias de uso e manutenção.</p>
+
+          <h3>4. DA RESTITUIÇÃO</h3>
+          <p>Constituído em mora para a devolução, o COMODATÁRIO pagará aluguel arbitrado pelo COMODANTE, sem prejuízo das perdas e danos (art. 582 do Código Civil).</p>
+
+          <br/>
+          <p style="text-align: center;">${data.cidade || '___________'}, ${new Date().toLocaleDateString()}</p>
+          <br/><br/>
+
+          <div style="display: flex; justify-content: space-between; margin-top: 40px; gap: 20px;">
+            ${renderSignature(data.comodante, 'COMODANTE', 'Assinatura', '{{SIGNATURE_COMODANTE}}')}
+            ${renderSignature(data.comodatario, 'COMODATÁRIO', 'Assinatura', '{{SIGNATURE_COMODATARIO}}')}
+          </div>
+        </div>
+      `)
+    },
+    {
+      id: 'recibo_quitacao',
+      title: 'Recibo e Termo de Quitação',
+      description: 'Recibo de pagamento com quitação plena de valores ou serviços.',
+      fields: [
+        { key: 'recebedor', label: 'Quem Recebe (Credor)', type: 'text' },
+        { key: 'doc_recebedor', label: 'CPF/CNPJ de Quem Recebe', type: 'text' },
+        { key: 'pagador', label: 'Quem Paga (Devedor)', type: 'text' },
+        { key: 'doc_pagador', label: 'CPF/CNPJ de Quem Paga', type: 'text' },
+        { key: 'valor', label: 'Valor Recebido (R$)', type: 'text' },
+        { key: 'valor_extenso', label: 'Valor por Extenso', type: 'text' },
+        { key: 'referente', label: 'Referente a (serviço, dívida, produto...)', type: 'textarea' },
+        { key: 'forma_pagamento', label: 'Forma de Pagamento (PIX, dinheiro...)', type: 'text' },
+        { key: 'cidade', label: 'Cidade', type: 'text' },
+      ],
+      content: (data) => wrapContractLayout(`
+        <div>
+          <h2 style="text-align: center;">RECIBO E TERMO DE QUITAÇÃO</h2>
+
+          <p>Eu, <strong>${data.recebedor || '____________________'}</strong>, inscrito(a) no CPF/CNPJ sob o nº ${data.doc_recebedor || '____________________'}, declaro que recebi de <strong>${data.pagador || '____________________'}</strong>, CPF/CNPJ ${data.doc_pagador || '____________________'}, a importância de <strong>R$ ${data.valor || '___,00'}</strong> (${data.valor_extenso || '____________________'}), por meio de ${data.forma_pagamento || '____________________'}.</p>
+
+          <h3>REFERENTE A</h3>
+          <p style="background: #f8f9fa; padding: 10px; border: 1px dashed #ccc;">${data.referente || '________________________________________'}</p>
+
+          <h3>DA QUITAÇÃO</h3>
+          <p>Pelo presente recibo, dou plena, geral e irrevogável <strong>QUITAÇÃO</strong> do valor acima descrito, para nada mais reclamar a qualquer título, seja judicial ou extrajudicialmente.</p>
+
+          <br/>
+          <p style="text-align: center;">${data.cidade || '___________'}, ${new Date().toLocaleDateString()}</p>
+          <br/><br/>
+
+          <div style="display: flex; justify-content: center; margin-top: 40px;">
+            ${renderSignature(data.recebedor, 'RECEBEDOR', 'Assinatura de quem recebeu', '{{SIGNATURE_RECEBEDOR}}', '60%')}
+          </div>
+        </div>
+      `)
+    },
   ];
 
   const handleInputChange = (key: string, value: string) => {
     setFormData(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleDownloadWord = () => {
+  const handleDownloadWord = async () => {
     if (!selectedTemplate) return;
-    
+    if (!(await registrarContrato())) return;
+
     const content = selectedTemplate.content(formData);
     const htmlContent = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
@@ -545,12 +890,14 @@ const ModelosContrato: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
+    if (!(await registrarContrato())) return;
     window.print();
   };
 
-  const handleSendForSignature = () => {
+  const handleSendForSignature = async () => {
     if (!selectedTemplate) return;
+    if (!(await registrarContrato())) return;
 
     const content = selectedTemplate.content(formData);
     const htmlContent = `
@@ -597,9 +944,10 @@ const ModelosContrato: React.FC = () => {
             
             <div className="grid-templates">
               {currentTemplates.map(template => (
-                <div key={template.id} className="template-card" onClick={() => { 
-                  setFormData({}); 
+                <div key={template.id} className="template-card" onClick={() => {
+                  setFormData({});
                   setSelectedTemplate(template);
+                  setContratoRegistrado(false);
                   setDocHash(Math.random().toString(36).substr(2, 32).toUpperCase());
                 }}>
                   <div className="template-icon">

@@ -19,7 +19,7 @@ from pypdf import PdfReader, PdfWriter, PageObject
 import hashlib
 from supabase import create_client, Client
 from pydantic import BaseModel, Field, EmailStr
-from typing import Optional
+from typing import Optional 
 from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { useLanguage } from '../contexts/LanguageContext';
+import axios from 'axios';
 import '../App.css';
 import './HistoricoComunicados.css';
 
@@ -21,68 +22,51 @@ type Comunicado = {
   destinatarios: DestinatarioComunicado[];
 };
 
-const comunicadosMock: Comunicado[] = [
-  {
-    id: 'c1',
-    assunto: 'Mudança nas Políticas de Contrato',
-    enviadoEm: '10/03/2026 09:15',
-    totalDestinatarios: 250,
-    totalAberturas: 180,
-    destinatarios: [
-      {
-        id: 'd1',
-        nome: 'João Silva',
-        email: 'joao.silva@example.com',
-        abriu: true,
-        dataAbertura: '10/03/2026 09:32'
-      },
-      {
-        id: 'd2',
-        nome: 'Maria Oliveira',
-        email: 'maria.oliveira@example.com',
-        abriu: true,
-        dataAbertura: '10/03/2026 10:05'
-      },
-      {
-        id: 'd3',
-        nome: 'Carlos Souza',
-        email: 'carlos.souza@example.com',
-        abriu: false
-      }
-    ]
-  },
-  {
-    id: 'c2',
-    assunto: 'Lançamento de Novos Recursos',
-    enviadoEm: '01/03/2026 16:40',
-    totalDestinatarios: 120,
-    totalAberturas: 75,
-    destinatarios: [
-      {
-        id: 'd4',
-        nome: 'Ana Paula',
-        email: 'ana.paula@example.com',
-        abriu: true,
-        dataAbertura: '01/03/2026 17:02'
-      },
-      {
-        id: 'd5',
-        nome: 'Bruno Lima',
-        email: 'bruno.lima@example.com',
-        abriu: false
-      }
-    ]
-  }
-];
+const formatarData = (iso?: string) => {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? iso : d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+};
 
 function HistoricoComunicados() {
   const { t } = useLanguage();
-  const [comunicadoSelecionadoId, setComunicadoSelecionadoId] = useState<string | null>(
-    comunicadosMock[0]?.id ?? null
-  );
+  const API_URL = import.meta.env.VITE_API_URL || '';
+  const [comunicados, setComunicados] = useState<Comunicado[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [comunicadoSelecionadoId, setComunicadoSelecionadoId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const emailUsuario = localStorage.getItem('userEmail');
+    if (!emailUsuario) {
+      setCarregando(false);
+      return;
+    }
+    axios
+      .get(`${API_URL}/api/comunicados`, { params: { email: emailUsuario } })
+      .then(response => {
+        const lista: Comunicado[] = (response.data || []).map((c: any) => ({
+          id: c.id,
+          assunto: c.assunto,
+          enviadoEm: formatarData(c.enviadoEm),
+          totalDestinatarios: c.totalDestinatarios,
+          totalAberturas: c.totalAberturas,
+          destinatarios: (c.destinatarios || []).map((d: any, i: number) => ({
+            id: `${c.id}-${i}`,
+            nome: d.nome || d.email,
+            email: d.email,
+            abriu: !!d.abriu,
+            dataAbertura: d.data_abertura ? formatarData(d.data_abertura) : undefined,
+          })),
+        }));
+        setComunicados(lista);
+        if (lista.length > 0) setComunicadoSelecionadoId(lista[0].id);
+      })
+      .catch(() => setComunicados([]))
+      .finally(() => setCarregando(false));
+  }, []);
 
   const comunicadoSelecionado =
-    comunicadosMock.find(c => c.id === comunicadoSelecionadoId) || null;
+    comunicados.find(c => c.id === comunicadoSelecionadoId) || null;
 
   const taxaAbertura = (comunicado: Comunicado) => {
     if (!comunicado.totalDestinatarios) return '0%';
@@ -137,7 +121,7 @@ function HistoricoComunicados() {
                   </tr>
                 </thead>
                 <tbody>
-                  {comunicadosMock.map(comunicado => (
+                  {comunicados.map(comunicado => (
                     <tr
                       key={comunicado.id}
                       className={comunicadoSelecionadoId === comunicado.id ? 'selected' : ''}
@@ -167,7 +151,7 @@ function HistoricoComunicados() {
                       </td>
                     </tr>
                   ))}
-                  {comunicadosMock.length === 0 && (
+                  {comunicados.length === 0 && (
                     <tr>
                       <td
                         colSpan={6}
@@ -177,7 +161,7 @@ function HistoricoComunicados() {
                           color: '#94a3b8'
                         }}
                       >
-                        {t('history.no_announcements')}
+                        {carregando ? 'Carregando...' : t('history.no_announcements')}
                       </td>
                     </tr>
                   )}

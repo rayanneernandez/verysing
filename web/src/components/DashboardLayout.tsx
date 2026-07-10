@@ -17,6 +17,13 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const [userName, setUserName] = useState('Usuário Sistema');
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const userPlan = localStorage.getItem('userPlan') || 'gratuito';
+  const planLabels: Record<string, string> = {
+    gratuito: 'Plano Gratuito',
+    profissional: 'Plano Profissional',
+    empresarial: 'Plano Empresarial',
+    admin: 'Administrador',
+  };
 
   useEffect(() => {
     const storedName = localStorage.getItem('userName');
@@ -169,7 +176,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
             {t('sidebar.announce')}
           </button>
 
-          <button 
+          <button
             className={`nav-item ${isActive('/historico-comunicados') ? 'active' : ''}`}
             onClick={() => {
                 navigate('/historico-comunicados');
@@ -179,6 +186,30 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
             {t('sidebar.history')}
           </button>
+
+          <button
+            className={`nav-item ${isActive('/orcamentos') ? 'active' : ''}`}
+            onClick={() => {
+                navigate('/orcamentos');
+                setIsSidebarOpen(false);
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+            Orçamentos
+          </button>
+
+          {userPlan === 'admin' && (
+            <button
+              className={`nav-item ${isActive('/admin') ? 'active' : ''}`}
+              onClick={() => {
+                  navigate('/admin');
+                  setIsSidebarOpen(false);
+              }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+              Administração
+            </button>
+          )}
         </nav>
 
         <div className="sidebar-footer">
@@ -214,7 +245,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
               <div className="user-avatar">{userName.charAt(0).toUpperCase()}</div>
               <div className="user-info">
                 <span className="user-name">{userName}</span>
-                <span className="user-role">{t('user.plan')}</span>
+                <span className="user-role">{planLabels[userPlan] || t('user.plan')}</span>
               </div>
               <svg 
                 className={`chevron ${isProfileMenuOpen ? 'open' : ''}`}
