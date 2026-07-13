@@ -165,32 +165,29 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
             {t('sidebar.templates')}
           </button>
 
-          {/* Comunicados: disponíveis a partir do plano Profissional */}
-          {userPlan !== 'gratuito' && (
-            <>
-              <button
-                className={`nav-item ${isActive('/enviar-comunicado') ? 'active' : ''}`}
-                onClick={() => {
-                    navigate('/enviar-comunicado');
-                    setIsSidebarOpen(false);
-                }}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-                {t('sidebar.announce')}
-              </button>
+          <button
+            className={`nav-item ${isActive('/enviar-comunicado') ? 'active' : ''}`}
+            onClick={() => {
+                navigate('/enviar-comunicado');
+                setIsSidebarOpen(false);
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+            {t('sidebar.announce')}
+            {userPlan === 'gratuito' && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', background: 'rgba(255,255,255,0.15)', padding: '0.1rem 0.45rem', borderRadius: '999px' }}>PRO</span>}
+          </button>
 
-              <button
-                className={`nav-item ${isActive('/historico-comunicados') ? 'active' : ''}`}
-                onClick={() => {
-                    navigate('/historico-comunicados');
-                    setIsSidebarOpen(false);
-                }}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                {t('sidebar.history')}
-              </button>
-            </>
-          )}
+          <button
+            className={`nav-item ${isActive('/historico-comunicados') ? 'active' : ''}`}
+            onClick={() => {
+                navigate('/historico-comunicados');
+                setIsSidebarOpen(false);
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            {t('sidebar.history')}
+            {userPlan === 'gratuito' && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', background: 'rgba(255,255,255,0.15)', padding: '0.1rem 0.45rem', borderRadius: '999px' }}>PRO</span>}
+          </button>
 
           <button
             className={`nav-item ${isActive('/orcamentos') ? 'active' : ''}`}
